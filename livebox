@@ -1,0 +1,150 @@
+#! /bin/bash
+#
+# A CLI for interacting with a Livebox 4.
+#
+# Requires jq, curl.
+
+set -e
+set -o pipefail
+
+LIVEBOX_ADDRESS=${LIVEBOX_ADDRESS:-192.168.1.1}
+LIVEBOX_USERNAME=${LIVEBOX_USERNAME:-admin}
+LIVEBOX_PASSWORD=$LIVEBOX_PASSWORD
+DEBUG=
+
+help() {
+    cat <<EOF
+Interact with a Livebox 4 (Orange).
+
+Usage:
+    $(basename "$0") <command> [options]
+
+Commands:
+    reboot       Reboots the livebox. Useful when upstream or downstream
+                 bandwiths aren't great.
+    phone        Show recent phone calls. Useful to report unwanted/spam calls.
+    speed        Show the output of NeMo.Intf.data/getMIBs. The numbers
+                 like 'downstream current rate' are given in kbit/s. Depending
+                 on your link mode (vdsl, dsl), this raw number has to be
+                 weighted in order to know your real downstream bandwith:
+                   - dsl: the real bandwidth is DownstreamCurrRate * 0.88
+                   - vdsl: the real bandwidth is DownstreamCurrRate * 0.96
+                 See: http://$LIVEBOX_ADDRESS/internal/internetState/tile.js
+    dsl          Show the output of NeMo.Intf.dsl0/getDSLStats.
+
+Options:
+    --username   Username to use for authentication. Defaults to "$LIVEBOX_USERNAME".
+                 You can also use LIVEBOX_USERNAME.
+    --password   Password to use for authentication. You can also use
+                 LIVEBOX_PASSWORD.
+    --address    IP or hostname of the livebox. Default: "$ADDRESS". You can
+                 also use LIVEBOX_ADDRESS.
+    --help, -h   Show help.
+    -d           Enable debug output on stderr, inluding curl's call
+                 bodies and responses.
+
+Maël Valais, 2020
+EOF
+    exit
+}
+
+COMMAND=
+while [ $# -ne 0 ]; do
+    case "$1" in
+    -h | --help)
+        help
+        exit 0
+        ;;
+    -d)
+        DEBUG=1
+        ;;
+    --address)
+        shift
+        if test -z "$1"; then
+            echo "--address requires an argument" >&2
+        fi
+        ADDRESS="$1"
+        ;;
+    --username)
+        shift
+        if test -z "$1"; then
+            echo "--username requires an argument" >&2
+        fi
+        LIVEBOX_USERNAME="$1"
+        ;;
+    --password)
+        shift
+        if test -z "$1"; then
+            echo "--password requires an argument" >&2
+        fi
+        LIVEBOX_PASSWORD="$1"
+        ;;
+    phone | reboot | dsl | speed)
+        COMMAND="$1"
+        ;;
+    -*)
+        printf -- "unknown flag: %s" "$1" >&2
+        exit 1
+        ;;
+    *)
+        printf -- "unknown positional argument: %s" "$1" >&2
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+if [ -z "$COMMAND" ]; then
+    echo "usage: $(basename "$0") <command>" >&2
+    exit 1
+fi
+
+gray="\033[90m"
+end='\033[0m'
+trace() {
+    # set +o pipefail # We don't want pipe errors to interrupt things here.
+    if [ -n "$DEBUG" ]; then
+        printf "%s ${gray}" "$1" >&2
+        LANG=C perl -e 'print join (" ", map { $_ =~ / / ? "\"".$_."\"" : $_} @ARGV)' -- "${@:2}" >&2
+        printf "${end}\n" >&2
+    fi
+    command "$@" | tee >(
+        if [ "$DEBUG" != "" ]; then
+            printf "${gray}" >&2
+            cat >&2
+            printf "${end}" >&2
+        else
+            cat >/dev/null
+        fi
+    )
+}
+
+# These are the headers that should be passed for authentication.
+RESP=$(
+    trace curl --fail -i -S -s http://$LIVEBOX_ADDRESS/ws -H 'Authorization: X-Sah-Login' -H 'Content-Type: application/x-sah-ws-4-call+json' \
+        -d '{"service":"sah.Device.Information","method":"createContext","parameters":{"applicationName":"webui","username":"'"$LIVEBOX_USERNAME"'","password":"'"$LIVEBOX_PASSWORD"'"}}'
+)
+H=$(
+    echo "$RESP" | grep ^Set-Cookie | sed 's/^Set-//' | xargs -0 printf "%s"
+    echo "$RESP" | tail -n1 | jq -r .data.contextID | xargs -0 printf "Authorization: X-Sah %s"
+)
+
+# Now, let's actually run the command given by the user.
+case "$COMMAND" in
+phone)
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service": "VoiceService.VoiceApplication","method": "getCallList","parameters": [{"line": "1"}]}'
+    ;;
+reboot)
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"NMC","method":"reboot","parameters":{"reason":"GUI_Reboot"}}'
+    ;;
+dsl)
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"NeMo.Intf.dsl0","method":"getDSLStats","parameters":{}}'
+    ;;
+speed)
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"NeMo.Intf.data","method":"getMIBs","parameters":{"mibs":"dsl"}}'
+    ;;
+esac
