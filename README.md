@@ -1,8 +1,10 @@
 # livebox CLI for livebox v4
 
-This is a CLI I wrote to quickly reboot my Livebox v4. The Livebox v4 is a
-all-in-one internet router that the French ISP Orange is renting to their
-customers.
+<img alt="livebox-speed-command" src="https://user-images.githubusercontent.com/2195781/114412685-9d8f6500-9bad-11eb-8911-0a571c0b578a.png" width="500">
+
+`livebox` is a CLI I wrote to quickly reboot my Livebox v4, as well as to see
+the modem's bandwidth. The Livebox v4 is an all-in-one internet router that the
+French ISP Orange is renting to their customers.
 
 Example:
 
@@ -23,7 +25,9 @@ Commands:
     reboot       Reboots the livebox. Useful when upstream or downstream
                  bandwiths aren't great.
     phone        Show recent phone calls. Useful to report unwanted/spam calls.
-    speed        Show the output of NeMo.Intf.data/getMIBs. The numbers
+    speed        Show the DSL Downstream and Upstream speeds. The 0.96 weight
+                 mentioned in speed --raw is already applied.
+    speedraw     Show the output of NeMo.Intf.data/getMIBs. The numbers
                  like 'downstream current rate' are given in kbit/s. Depending
                  on your link mode (vdsl, dsl), this raw number has to be
                  weighted in order to know your real downstream bandwith:

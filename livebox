@@ -23,7 +23,9 @@ Commands:
     reboot       Reboots the livebox. Useful when upstream or downstream
                  bandwiths aren't great.
     phone        Show recent phone calls. Useful to report unwanted/spam calls.
-    speed        Show the output of NeMo.Intf.data/getMIBs. The numbers
+    speed        Show the DSL Downstream and Upstream speeds. The 0.96 weight
+                 mentioned in speed --raw is already applied.
+    speedraw     Show the output of NeMo.Intf.data/getMIBs. The numbers
                  like 'downstream current rate' are given in kbit/s. Depending
                  on your link mode (vdsl, dsl), this raw number has to be
                  weighted in order to know your real downstream bandwith:
@@ -79,7 +81,7 @@ while [ $# -ne 0 ]; do
         fi
         LIVEBOX_PASSWORD="$1"
         ;;
-    phone | reboot | dsl | speed)
+    phone | reboot | dsl | speed | speedraw)
         COMMAND="$1"
         ;;
     -*)
@@ -154,5 +156,9 @@ speed)
     printf "${red}↓ %.1f Mbps${end}\n${green}↑ %.1f Mbps${end}\n" \
         "$(jq -r ".result.status.dsl.dsl0.DownstreamCurrRate * 0.96 / 1000" <<<"$json" || (echo "$json" | jq >&2 && exit 1))" \
         "$(jq -r ".result.status.dsl.dsl0.UpstreamCurrRate * 0.96 / 1000" <<<"$json" || (echo "$json" | jq >&2 && exit 1))"
+    ;;
+speedraw)
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"NeMo.Intf.data","method":"getMIBs","parameters":{"mibs":"dsl"}}'
     ;;
 esac
