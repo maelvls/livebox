@@ -33,6 +33,8 @@ Commands:
                    - vdsl: the real bandwidth is DownstreamCurrRate * 0.96
                  See: http://$LIVEBOX_ADDRESS/internal/internetState/tile.js
     dsl          Show the output of NeMo.Intf.dsl0/getDSLStats.
+    firewall     List firewall IPv4 settings.
+    add          Add a firewall rule for IPv4.
 
 Options:
     --username   Username to use for authentication. Defaults to "$LIVEBOX_USERNAME".
@@ -42,7 +44,7 @@ Options:
     --address    IP or hostname of the livebox. Default: "$ADDRESS". You can
                  also use LIVEBOX_ADDRESS.
     --help, -h   Show help.
-    -d           Enable debug output on stderr, inluding curl's call
+    --debug, -d  Enable debug output on stderr, inluding curl's call
                  bodies and responses.
 
 Maël Valais, 2020
@@ -57,7 +59,7 @@ while [ $# -ne 0 ]; do
         help
         exit 0
         ;;
-    -d)
+    -d | --debug)
         DEBUG=1
         ;;
     --address)
@@ -81,7 +83,7 @@ while [ $# -ne 0 ]; do
         fi
         LIVEBOX_PASSWORD="$1"
         ;;
-    phone | reboot | dsl | speed | speedraw)
+    phone | reboot | dsl | speed | speedraw | firewall | add | remove | api)
         COMMAND="$1"
         ;;
     -*)
@@ -101,8 +103,26 @@ if [ -z "$COMMAND" ]; then
     exit 1
 fi
 
-gray="\033[90m"
-end='\033[0m'
+if [ -t 1 ] || [ "$COLOR" = always ] && [ "$COLOR" != never ]; then
+    # We turn on coloring only if the current shell is interactive (or
+    # COLOR=always).
+    #
+    # IMPORTANT: in the rest of this script, use printf instead of "echo
+    # -e" when you want to render colors; echo -e is not supported BSD
+    # versions of /bin/echo (like on macOS).
+    gray='\033[37m'
+    red='\033[91m'
+    blue='\033[94m'
+    green='\033[92m'
+    yel='\033[93m'
+    end='\033[0m'
+    ok='✅  '
+    broom='🧹  '
+    earth='🌍  '
+    err='❌  '
+    warn='⚠️  '
+fi
+
 trace() {
     # set +o pipefail # We don't want pipe errors to interrupt things here.
     if [ -n "$DEBUG" ]; then
@@ -142,8 +162,21 @@ reboot)
         -d '{"service":"NMC","method":"reboot","parameters":{"reason":"GUI_Reboot"}}'
     ;;
 dsl)
+
     trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
-        -d '{"service":"NeMo.Intf.dsl0","method":"getDSLStats","parameters":{}}'
+        -d '{"service":"NMC","method":"get","parameters":{}}' | jq
+
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"NetMaster","method":"getWANModeList","parameters":{}}' | jq
+
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"NetMaster","method":"getInterfaceConfig","parameters":{"name": "VDSL_DHCP"}}' | jq
+
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"NMC","method":"getWANStatus","parameters":{}}' | jq
+
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"NeMo.Intf.dsl0","method":"getDSLStats","parameters":{}}' | jq
     ;;
 speed)
     red='\033[91m'
@@ -160,5 +193,69 @@ speed)
 speedraw)
     trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
         -d '{"service":"NeMo.Intf.data","method":"getMIBs","parameters":{"mibs":"dsl"}}'
+    ;;
+
+firewall)
+    R=$(trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-4-call+json" \
+        -d '{"service":"Firewall","method":"getPortForwarding","parameters":{"origin":"webui"}}')
+    if [ $? -eq 0 ]; then
+        echo "$R" | jq ".status[] | \"\(.Protocol)\t\(.SourcePrefix):\(.ExternalPort)\t-> \(.DestinationIPAddress):\(.InternalPort)\t\(.Description)\"" -r | expand -t 4,28,56
+    else
+        echo "$R" | jq
+    fi
+    ;;
+api)
+    curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-4-call+json" -d @-
+    ;;
+add)
+    R=$(trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-4-call+json" \
+        -d "$(
+            cat <<EOF
+            {
+                "service": "Firewall",
+                "method": "setPortForwarding",
+                "parameters": {
+                    "id": "a",
+                    "internalPort": "9",
+                    "externalPort": "9",
+                    "destinationIPAddress": "255.255.255.255",
+                    "enable": true,
+                    "persistent": true,
+                    "protocol": "17",
+                    "description": "a",
+                    "sourceInterface": "data",
+                    "origin": "webui",
+                    "destinationMACAddress": "18:c0:4d:89:0c:86",
+                    "sourcePrefix": "",
+                    "SymmetricSNAT": true
+                }
+            }
+EOF
+        )")
+    if [ $? -eq 0 ]; then
+        echo "$R" | jq
+    else
+        echo "$R" | jq
+    fi
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-4-call+json" \
+        -d '{"service":"Firewall","method":"commit","parameters":{}}'
+    ;;
+remove)
+    R=$(trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-4-call+json" \
+        -d "$(
+            cat <<EOF
+            {
+              "service": "Firewall",
+              "method": "deletePortForwarding",
+              "parameters": {
+                "id": "webui_a",
+                "destinationIPAddress": "192.168.1.200",
+                "origin": "webui"
+              }
+            }
+EOF
+        )")
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-4-call+json" \
+        -d '{"service":"Firewall","method":"commit","parameters":{}}'
     ;;
 esac
