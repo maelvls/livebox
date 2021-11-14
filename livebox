@@ -197,9 +197,9 @@ speedraw)
 
 firewall)
     R=$(trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-4-call+json" \
-        -d '{"service":"Firewall","method":"getPortForwarding","parameters":{"origin":"webui"}}')
+        -d '{"service":"Firewall","method":"getPortForwarding","parameters":{}}')
     if [ $? -eq 0 ]; then
-        echo "$R" | jq ".status[] | \"\(.Protocol)\t\(.SourcePrefix):\(.ExternalPort)\t-> \(.DestinationIPAddress):\(.InternalPort)\t\(.Description)\"" -r | expand -t 4,28,56
+        echo "$R" | jq ".status[] | \"\(.Protocol)\t\(.SourcePrefix):\(.ExternalPort)\t-> \(.DestinationIPAddress):\(.InternalPort)\t\(.Id)\"" -r | expand -t 4,28,56
     else
         echo "$R" | jq
     fi
