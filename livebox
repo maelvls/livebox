@@ -41,7 +41,7 @@ Options:
                  You can also use LIVEBOX_USERNAME.
     --password   Password to use for authentication. You can also use
                  LIVEBOX_PASSWORD.
-    --address    IP or hostname of the livebox. Default: "$ADDRESS". You can
+    --address    IP or hostname of the livebox. Default: "$LIVEBOX_ADDRESS". You can
                  also use LIVEBOX_ADDRESS.
     --help, -h   Show help.
     --debug, -d  Enable debug output on stderr, inluding curl's call
@@ -67,7 +67,7 @@ while [ $# -ne 0 ]; do
         if test -z "$1"; then
             echo "--address requires an argument" >&2
         fi
-        ADDRESS="$1"
+        LIVEBOX_ADDRESS="$1"
         ;;
     --username)
         shift
