@@ -20,6 +20,7 @@ Usage:
     $(basename "$0") <command> [options]
 
 Commands:
+    ls           List all devices known and their IPs.
     reboot       Reboots the livebox. Useful when upstream or downstream
                  bandwiths aren't great.
     phone        Show recent phone calls. Useful to report unwanted/spam calls.
@@ -35,6 +36,8 @@ Commands:
     dsl          Show the output of NeMo.Intf.dsl0/getDSLStats.
     firewall     List firewall IPv4 settings.
     add          Add a firewall rule for IPv4.
+    api         Send a raw API request. You have to provide the JSON payload
+                 on stdin.
 
 Options:
     --username   Username to use for authentication. Defaults to "$LIVEBOX_USERNAME".
@@ -83,7 +86,7 @@ while [ $# -ne 0 ]; do
         fi
         LIVEBOX_PASSWORD="$1"
         ;;
-    phone | reboot | dsl | speed | speedraw | firewall | add | remove | api)
+    ls | phone | reboot | dsl | speed | speedraw | firewall | add | remove | api)
         COMMAND="$1"
         ;;
     -*)
@@ -153,6 +156,11 @@ H=$(
 
 # Now, let's actually run the command given by the user.
 case "$COMMAND" in
+ls)
+    trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
+        -d '{"service":"TopologyDiagnostics","method":"buildTopology","parameters":{"SendXmlFile":false}}' \
+        | jq -r '.. | select(.Name? and .IPAddress?) | select(.IPAddress != "") | "\(.IPAddress) \(.Name)"'
+    ;;
 phone)
     trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
         -d '{"service": "VoiceService.VoiceApplication","method": "getCallList","parameters": [{"line": "1"}]}'
