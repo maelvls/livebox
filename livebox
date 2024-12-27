@@ -64,20 +64,12 @@ Maël Valais, 2024.
 EOF
 }
 
-if ! command -v gum >/dev/null; then
-    echo "gum is required to ask for the password interactively." >&2
-    exit 1
-fi
 if ! command -v jq >/dev/null; then
     echo "jq is required to parse the JSON output." >&2
     exit 1
 fi
 if ! command -v curl >/dev/null; then
     echo "curl is required to make HTTP requests." >&2
-    exit 1
-fi
-if ! command -v yq >/dev/null; then
-    echo "yq is required to parse the configuration file." >&2
     exit 1
 fi
 
@@ -101,6 +93,15 @@ while [ $# -ne 0 ]; do
         exit 0
         ;;
     login)
+        if ! command -v gum >/dev/null; then
+            echo "gum is required to ask for the password interactively." >&2
+            exit 1
+        fi
+        if ! command -v yq >/dev/null; then
+            echo "yq is required to parse the configuration file." >&2
+            exit 1
+        fi
+
         # Interactively ask for the username (show the default 'admin'), the address
         # (show the default '192.168.1.1'), and password. Then save it in the
         # configuration file.
