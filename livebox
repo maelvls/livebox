@@ -9,7 +9,7 @@ set -o pipefail
 
 LIVEBOX_ADDRESS=${LIVEBOX_ADDRESS:-192.168.1.1}
 LIVEBOX_USERNAME=${LIVEBOX_USERNAME:-admin}
-LIVEBOX_PASSWORD=$LIVEBOX_PASSWORD
+LIVEBOX_PASSWORD=${LIVEBOX_PASSWORD:-}
 DEBUG=
 
 help() {
@@ -76,11 +76,11 @@ fi
 # First, load the configuration file if it exists.
 if [ -f ~/.config/livebox.yml ]; then
     if ! command -v yq >/dev/null; then
-        echo "yq is required to parse the configuration file." >&2
+        echo "yq is required to parse the configuration file. https://github.com/mikefarah/yq" >&2
         exit 1
     fi
     eval "$(
-        yq -r 'to_entries | map("export \(.key | upcase)=\(.value | @sh)") | .[]' \
+        yq -r 'to_entries | map("export LIVEBOX_\(.key | upcase)=\(.value | @sh)") | .[]' \
             <~/.config/livebox.yml
     )"
 fi
@@ -94,11 +94,11 @@ while [ $# -ne 0 ]; do
         ;;
     login)
         if ! command -v gum >/dev/null; then
-            echo "gum is required to ask for the password interactively." >&2
+            echo "gum is required to ask for the password interactively. https://github.com/charmbracelet/gum" >&2
             exit 1
         fi
         if ! command -v yq >/dev/null; then
-            echo "yq is required to parse the configuration file." >&2
+            echo "yq is required to parse the configuration file. https://github.com/mikefarah/yq" >&2
             exit 1
         fi
 
