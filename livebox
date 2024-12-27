@@ -14,12 +14,22 @@ DEBUG=
 
 help() {
     cat <<EOF
-Interact with a Livebox 4 (Orange).
+Interact with a Livebox 4 or 5 (Orange). To authenticate, you can either use
+the login command, or provide the password with --password or LIVEBOX_PASSWORD.
+When using the login command, the credentials are saved in
+~/.config/livebox.yml. This file has the format:
+
+    address: 192.168.1.1
+    username: admin
+    password: password
+
 
 Usage:
     $(basename "$0") <command> [options]
 
 Commands:
+    login        Authenticate to the livebox and save the information in
+                 ~/.config/livebox.yml.
     ls           List all devices known and their IPs.
     reboot       Reboots the livebox. Useful when upstream or downstream
                  bandwiths aren't great.
@@ -50,16 +60,65 @@ Options:
     --debug, -d  Enable debug output on stderr, inluding curl's call
                  bodies and responses.
 
-Maël Valais, 2020
+Maël Valais, 2024.
 EOF
-    exit
 }
+
+if ! command -v gum >/dev/null; then
+    echo "gum is required to ask for the password interactively." >&2
+    exit 1
+fi
+if ! command -v jq >/dev/null; then
+    echo "jq is required to parse the JSON output." >&2
+    exit 1
+fi
+if ! command -v curl >/dev/null; then
+    echo "curl is required to make HTTP requests." >&2
+    exit 1
+fi
+if ! command -v yq >/dev/null; then
+    echo "yq is required to parse the configuration file." >&2
+    exit 1
+fi
+
+# First, load the configuration file if it exists.
+if [ -f ~/.config/livebox.yml ]; then
+    if ! command -v yq >/dev/null; then
+        echo "yq is required to parse the configuration file." >&2
+        exit 1
+    fi
+    eval "$(
+        yq -r 'to_entries | map("export \(.key | upcase)=\(.value | @sh)") | .[]' \
+            <~/.config/livebox.yml
+    )"
+fi
 
 COMMAND=
 while [ $# -ne 0 ]; do
     case "$1" in
     -h | --help)
         help
+        exit 0
+        ;;
+    login)
+        # Interactively ask for the username (show the default 'admin'), the address
+        # (show the default '192.168.1.1'), and password. Then save it in the
+        # configuration file.
+        address=$(yq -r .address ~/.config/livebox.yml 2>/dev/null || echo 192.168.1.1)
+        username=$(yq -r .username ~/.config/livebox.yml 2>/dev/null || echo admin)
+        password=$(yq -r .password ~/.config/livebox.yml 2>/dev/null || echo)
+
+        address=$(gum input --placeholder 192.168.1.1 --value "$address" --header "Enter the hostname or IP of the Livebox.")
+        username=$(gum input --placeholder admin --value "$username" --header "Enter the username.")
+        password=$(gum input --password --value "$password" --header "Enter the password. By default, it is the 8 first chars of the Wi-Fi passcode.")
+
+        # Save the configuration file using yq -i.
+        mkdir -p ~/.config
+        yq -i e ".address = \"$address\"" ~/.config/livebox.yml
+        yq -i e ".username = \"$username\"" ~/.config/livebox.yml
+        yq -i e ".password = \"$password\"" ~/.config/livebox.yml
+
+        echo "Configuration saved in ~/.config/livebox.yml."
         exit 0
         ;;
     -d | --debug)
@@ -159,7 +218,7 @@ case "$COMMAND" in
 ls)
     trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
         -d '{"service":"TopologyDiagnostics","method":"buildTopology","parameters":{"SendXmlFile":false}}' \
-        | jq -r '.. | select(.Name? and .IPAddress?) | select(.IPAddress != "") | "\(.IPAddress) \(.Name)"'
+        | jq -r '.. | select(.Name? and .IPAddress?) | select(.IPAddress != "") | "\(.IPAddress) \(.PhysAddress) \(.Name)"'
     ;;
 phone)
     trace curl --fail -s -S -X POST "http://$LIVEBOX_ADDRESS/ws" -H "$H" -H "Content-Type: application/x-sah-ws-1-call+json" \
