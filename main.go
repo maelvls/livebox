@@ -80,21 +80,22 @@ func main() {
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug output")
 
 	rootCmd.AddCommand(
-		newLoginCmd(),
-		newLsCmd(),
-		newRebootCmd(),
-		newPhoneCmd(),
-		newSpeedCmd(),
-		newSpeedRawCmd(),
-		newDslCmd(),
-		newFirewallCmd(),
-		newAddPinholeCmd(),
-		newApiCmd(),
-		newSetPortForwarding(),
+		loginCmd(),
+		lsCmd(),
+		rebootCmd(),
+		phoneCmd(),
+		speedCmd(),
+		speedRawCmd(),
+		dslCmd(),
+		firewallCmd(),
+		setPinholeCmd(),
+		apiCmd(),
+		setPortForwarding(),
+		addStaticLeaseCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
 }
@@ -217,7 +218,7 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 		for _, err := range result.Result.Errors {
 			errs = append(errs, fmt.Sprintf("  * %d: %s: %s", err.Error, err.Description, err.Info))
 		}
-		return "", fmt.Errorf("%s, %s:\n%s", service, method, strings.Join(errs, "\n"))
+		return "", fmt.Errorf("while running method '%s' on service %s:\n%s", method, service, strings.Join(errs, "\n"))
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -226,7 +227,7 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 	return string(bodyBytes), nil
 }
 
-func newLoginCmd() *cobra.Command {
+func loginCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "login",
 		Short: "Authenticate to the livebox and save the information",
@@ -296,7 +297,7 @@ func newLoginCmd() *cobra.Command {
 	}
 }
 
-func newLsCmd() *cobra.Command {
+func lsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls",
 		Short: "List all devices known and their IPs",
@@ -376,7 +377,7 @@ func extractDevicesRecursive(data interface{}, devices *[]Device) {
 	}
 }
 
-func newRebootCmd() *cobra.Command {
+func rebootCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "reboot",
 		Short: "Reboots the livebox",
@@ -403,7 +404,7 @@ func newRebootCmd() *cobra.Command {
 	}
 }
 
-func newPhoneCmd() *cobra.Command {
+func phoneCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "phone",
 		Short: "Show recent phone calls",
@@ -430,7 +431,7 @@ func newPhoneCmd() *cobra.Command {
 	}
 }
 
-func newSpeedCmd() *cobra.Command {
+func speedCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "speed",
 		Short: "Show the DSL Downstream and Upstream speeds",
@@ -482,7 +483,7 @@ func newSpeedCmd() *cobra.Command {
 	}
 }
 
-func newSpeedRawCmd() *cobra.Command {
+func speedRawCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "speedraw",
 		Short: "Show the output of NeMo.Intf.data/getMIBs",
@@ -509,7 +510,7 @@ func newSpeedRawCmd() *cobra.Command {
 	}
 }
 
-func newDslCmd() *cobra.Command {
+func dslCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "dsl",
 		Short: "Show the output of NeMo.Intf.dsl0/getDSLStats",
@@ -554,7 +555,7 @@ func newDslCmd() *cobra.Command {
 	}
 }
 
-func newFirewallCmd() *cobra.Command {
+func firewallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "firewall",
 		Short: "List firewall IPv4 settings",
@@ -642,31 +643,9 @@ func newFirewallCmd() *cobra.Command {
 	}
 }
 
-func newAddPinholeCmd() *cobra.Command {
-	// Example:
-	//  livebox set-pinhole tailscale-udp --dst-port 443 --dst-ip 192.168.1.200 --dst-mac 00:11:32:e1:21:5c
-	//
-	// Result:
-	//  livebox --address livebox:8080 --password "$password" api <<EOF | jq
-	//  {
-	//    "service": "Firewall",
-	//    "method": "setPinhole",
-	//    "parameters": {
-	//      "id": "https",
-	//      "origin": "webui",
-	//      "sourceInterface": "data",
-	//      "sourcePort": "",
-	//      "destinationPort": "443",
-	//      "destinationIPAddress": "192.168.1.200",
-	//      "destinationMACAddress": "00:11:32:e1:21:5c",
-	//      "sourcePrefix": "",
-	//      "protocol": "6",
-	//      "ipversion": 6,
-	//      "enable": true,
-	//      "persistent": true
-	//    }
-	//  }
-	//  EOF
+func setPinholeCmd() *cobra.Command {
+	var toPort, toIP, toMAC string
+	var useUDP bool
 	cmd := &cobra.Command{
 		Use:   "set-pinhole",
 		Short: "Set a firewall rule for IPv4",
@@ -686,17 +665,10 @@ func newAddPinholeCmd() *cobra.Command {
 				return fmt.Errorf("expected a single argument: the name of pinhole")
 			}
 			name := args[0]
-			dstPort, err := cmd.Flags().GetString("dst-port")
-			if err != nil {
-				return fmt.Errorf("--dst-port required")
-			}
-			dstIP, err := cmd.Flags().GetString("dst-ip")
-			if err != nil {
-				return fmt.Errorf("--dst-ip required")
-			}
-			dstMAC, err := cmd.Flags().GetString("dst-mac")
-			if err != nil {
-				return fmt.Errorf("--dst-mac required")
+
+			protocol := "6" // TCP
+			if useUDP {
+				protocol = "17" // UDP
 			}
 
 			payload := map[string]interface{}{
@@ -707,14 +679,14 @@ func newAddPinholeCmd() *cobra.Command {
 					"origin":                "webui",
 					"sourceInterface":       "data",
 					"sourcePort":            "",
-					"destinationPort":       dstPort,
-					"destinationIPAddress":  dstIP,
-					"destinationMACAddress": dstMAC,
+					"destinationPort":       toPort,
+					"destinationIPAddress":  toIP,
+					"destinationMACAddress": toMAC,
 					"sourcePrefix":          "",
-					"protocol":              "6",
+					"protocol":              protocol,
 					"ipversion":             6,
 					"enable":                true,
-					"persistent":            true,
+					"persistent":            true, // IPv6 only.
 				},
 			}
 
@@ -733,14 +705,19 @@ func newAddPinholeCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("dst-port", "", "Destination port")
-	cmd.Flags().String("dst-ip", "", "Destination IP address")
-	cmd.Flags().String("dst-mac", "", "Destination MAC address")
+	cmd.Flags().StringVar(&toPort, "to-port", "", "Destination port")
+	cmd.Flags().StringVar(&toIP, "to-ip", "", "Destination IP address")
+	cmd.Flags().StringVar(&toMAC, "to-mac", "", "Destination MAC address")
+	cmd.Flags().BoolVar(&useUDP, "udp", false, "Use UDP instead of TCP. Default is TCP")
+
+	cmd.MarkFlagRequired("to-port")
+	cmd.MarkFlagRequired("to-ip")
+	cmd.MarkFlagRequired("to-mac")
 
 	return cmd
 }
 
-func newSetPortForwarding() *cobra.Command {
+func setPortForwarding() *cobra.Command {
 	var fromPort, toPort, toIP, toMAC string
 	var useUDP bool
 	cmd := &cobra.Command{
@@ -782,6 +759,7 @@ func newSetPortForwarding() *cobra.Command {
 				"sourceInterface":       "data",
 				"origin":                "webui",
 				"sourcePrefix":          "",
+				"ipversion":             4, // IPv4 only.
 			}
 
 			response, err := executeRequest(address, contextID, cookie, "Firewall", "setPortForwarding", params)
@@ -795,7 +773,7 @@ func newSetPortForwarding() *cobra.Command {
 				Result struct {
 					Data struct {
 						Rule struct {
-							Status        string `json:"Status"`
+							Status        string `json:"Status"` // "Enabled", "Error".
 							LeaseDuration int    `json:"LeaseDuration"`
 							HairpinNAT    bool   `json:"HairpinNAT"`
 							SymmetricSNAT bool   `json:"SymmetricSNAT"`
@@ -810,12 +788,14 @@ func newSetPortForwarding() *cobra.Command {
 				return fmt.Errorf("failed to unmarshal response: %w", err)
 			}
 
-			fmt.Printf("Status: %s\nLeaseDuration: %d\nHairpinNAT: %t\nSymmetricSNAT: %t\nUPnPV1Compat: %t\n",
-				data.Result.Data.Rule.Status,
+			if data.Result.Data.Rule.Status != "Enabled" {
+				return fmt.Errorf("failed to enable rule: %s", data.Result.Data.Rule.Status)
+			}
+
+			fmt.Printf("Successfully set rule. Lease duration: %d, Hairpin NAT: %t, Symmetric SNAT: %t\n",
 				data.Result.Data.Rule.LeaseDuration,
 				data.Result.Data.Rule.HairpinNAT,
 				data.Result.Data.Rule.SymmetricSNAT,
-				data.Result.Data.Rule.UPnPV1Compat,
 			)
 			return nil
 		},
@@ -829,6 +809,42 @@ func newSetPortForwarding() *cobra.Command {
 	cmd.MarkFlagRequired("from-port")
 	cmd.MarkFlagRequired("to-port")
 	cmd.MarkFlagRequired("to-ip")
+	return cmd
+}
+
+func addStaticLeaseCmd() *cobra.Command {
+	var mac, ip string
+	cmd := &cobra.Command{
+		Use:   "add-static-lease",
+		Short: "Add a static lease",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			params := map[string]interface{}{
+				"MACAddress": mac,
+				"IPAddress":  ip,
+			}
+			response, err := executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "addStaticLease", params)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(response)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&mac, "mac", "", "MAC address")
+	cmd.Flags().StringVar(&ip, "ip", "", "IP address")
+	cmd.MarkFlagRequired("mac")
+	cmd.MarkFlagRequired("ip")
 	return cmd
 }
 
@@ -848,7 +864,7 @@ func mergeFlagsWithConfig(config Config) (address, username, password string) {
 	return address, username, password
 }
 
-func newApiCmd() *cobra.Command {
+func apiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "api",
 		Short: "Send a raw API request",
