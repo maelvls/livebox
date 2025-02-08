@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -92,6 +93,7 @@ func main() {
 		apiCmd(),
 		setPortForwarding(),
 		addStaticLeaseCmd(),
+		lsStaticLeasesCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -160,6 +162,11 @@ func authenticate(address, username, password string) (contextID string, sessid 
 
 	return result.Data.ContextID, sessid, nil
 }
+
+// You can get the err info using:
+//
+//	var apiErrs APIErrors
+//	errors.As(err, &apiErrs)
 func executeRequest(address, contextID string, cookie *http.Cookie, service, method string, parameters map[string]interface{}) (string, error) {
 	requestURL := fmt.Sprintf("http://%s/ws", address)
 
@@ -195,6 +202,9 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
 
 	// Example error response:
 	// 	{"result":{"status":null,"errors":[{"error":13,"description":"Permission denied","info":"TopologyDiagnostics"}]}}
@@ -202,11 +212,7 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 	var result struct {
 		Result struct {
 			Status interface{} `json:"status"`
-			Errors []struct {
-				Error       int    `json:"error"`
-				Description string `json:"description"`
-				Info        string `json:"info"`
-			} `json:"errors"`
+			Errors APIErrors   `json:"errors"`
 		} `json:"result"`
 	}
 	err = json.Unmarshal([]byte(bodyBytes), &result)
@@ -218,13 +224,26 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 		for _, err := range result.Result.Errors {
 			errs = append(errs, fmt.Sprintf("  * %d: %s: %s", err.Error, err.Description, err.Info))
 		}
-		return "", fmt.Errorf("while running method '%s' on service %s:\n%s", method, service, strings.Join(errs, "\n"))
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return "", fmt.Errorf("while running method '%s' on service %s:\n%w", method, service, APIErrors(result.Result.Errors))
 	}
 
 	return string(bodyBytes), nil
+}
+
+type APIErrors []APIError
+
+func (e APIErrors) Error() string {
+	var errs []string
+	for _, err := range e {
+		errs = append(errs, fmt.Sprintf("  * %d: %s: %s", err.Error, err.Description, err.Info))
+	}
+	return strings.Join(errs, "\n")
+}
+
+type APIError struct {
+	Error       int    `json:"error"`
+	Description string `json:"description"`
+	Info        string `json:"info"`
 }
 
 func loginCmd() *cobra.Command {
@@ -815,7 +834,7 @@ func setPortForwarding() *cobra.Command {
 func addStaticLeaseCmd() *cobra.Command {
 	var mac, ip string
 	cmd := &cobra.Command{
-		Use:   "add-static-lease",
+		Use:   "set-static-lease",
 		Short: "Add a static lease",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
@@ -828,11 +847,42 @@ func addStaticLeaseCmd() *cobra.Command {
 				return err
 			}
 
+			leases, err := getStaticLeases(address, contextID, cookie)
+			if err != nil {
+				return fmt.Errorf("failed to get static leases: %w", err)
+			}
+
+			for _, lease := range leases {
+				if lease.MACAddress == mac && lease.IPAddress == ip {
+					fmt.Println("Lease already present, nothing to do")
+					return nil
+				}
+				if lease.IPAddress == ip {
+					return fmt.Errorf("IP address already reserved with MAC %s", lease.MACAddress)
+				}
+				if lease.MACAddress == mac {
+					return fmt.Errorf("MAC address already reserved for the IP %s", lease.IPAddress)
+				}
+			}
+
 			params := map[string]interface{}{
 				"MACAddress": mac,
 				"IPAddress":  ip,
 			}
+
 			response, err := executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "addStaticLease", params)
+			// Example of error response:
+			//  * 0: Success: MACAddress
+			//  * 393221: IP address already reserved:
+			//  * 196639: Function execution failed: addStaticLease
+			var apiErrs APIErrors
+			if errors.As(err, &apiErrs) {
+				for _, apiErr := range apiErrs {
+					if apiErr.Error == 393221 {
+						return fmt.Errorf("IP address already reserved")
+					}
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -846,6 +896,63 @@ func addStaticLeaseCmd() *cobra.Command {
 	cmd.MarkFlagRequired("mac")
 	cmd.MarkFlagRequired("ip")
 	return cmd
+}
+
+type StaticLease struct {
+	IPAddress  string `json:"IPAddress"`
+	MACAddress string `json:"MACAddress"`
+	LeasePath  string `json:"LeasePath"`
+}
+
+func getStaticLeases(address, contextID string, cookie *http.Cookie) ([]StaticLease, error) {
+	params := map[string]interface{}{
+		"default": "",
+	}
+	response, err := executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "getStaticLeases", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var data struct {
+		Result struct {
+			Status []StaticLease `json:"status"`
+		} `json:"result"`
+	}
+	err = json.Unmarshal([]byte(response), &data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return data.Result.Status, nil
+}
+
+func lsStaticLeasesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "ls-static-leases",
+		Short: "List static leases",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			leases, err := getStaticLeases(address, contextID, cookie)
+			if err != nil {
+				return err
+			}
+
+			for _, lease := range leases {
+				fmt.Printf("%s %s\n", lease.IPAddress, lease.MACAddress)
+			}
+
+			return nil
+		},
+	}
 }
 
 func mergeFlagsWithConfig(config Config) (address, username, password string) {
