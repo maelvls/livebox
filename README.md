@@ -7,11 +7,8 @@ modem's bandwidth. It also works with Livebox 5 models. The Livebox is an
 all-in-one internet router that the French ISP Orange is renting to their
 customers.
 
-You will need [curl](https://curl.se/), [yq](https://github.com/mikefarah/yq),
-and [gum](https://github.com/charmbracelet/gum) to run this CLI. To install them on macOS:
-
 ```sh
-brew install curl yq gum
+go install github.com/maelvls/livebox@latest
 ```
 
 To get started:
@@ -36,7 +33,7 @@ Features:
 
 ```text
 % livebox --help
-Interact with a Livebox 4 or 5 (Orange). To authenticate, you can either use
+A CLI for interacting with a Livebox 4 or 5 (Orange). To authenticate, you can either use
 the login command, or provide the password with --password or LIVEBOX_PASSWORD.
 When using the login command, the credentials are saved in
 ~/.config/livebox.yml. This file has the format:
@@ -67,8 +64,8 @@ Commands:
                  See: http://192.168.1.1/internal/internetState/tile.js
     dsl          Show the output of NeMo.Intf.dsl0/getDSLStats.
     firewall     List firewall IPv4 settings.
-    add          Add a firewall rule for IPv4.
-    api         Send a raw API request. You have to provide the JSON payload
+    set-pinhole  Add a firewall rule for IPv4.
+    api          Send a raw API request. You have to provide the JSON payload
                  on stdin.
 
 Options:
