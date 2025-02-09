@@ -431,6 +431,9 @@ func lsCmd() *cobra.Command {
 
 			var rows [][]string
 			for _, device := range devices {
+				if device.IPAddress == "" {
+					continue
+				}
 				rows = append(rows, []string{device.Name, device.IPAddress, device.PhysAddress})
 			}
 			t := table.New().
@@ -456,6 +459,125 @@ func flatten(children []Child) []Child {
 	return devices
 }
 
+// Example of a device:
+//
+//  {
+//  	"Key": "0A:7D:5C:93:78:5A",
+//  	"DiscoverySource": "import",
+//  	"Name": "MacBookPro-1",
+//  	"DeviceType": "Computer",
+//  	"Active": false,
+//  	"Tags": "lan edev mac physical flowstats ipv4 ipv6 dhcp ssw_sta events wifi",
+//  	"FirstSeen": "2025-01-16T02:02:04Z",
+//  	"LastConnection": "2025-02-05T07:02:11Z",
+//  	"LastChanged": "2025-02-05T07:03:10Z",
+//  	"Master": "",
+//  	"DeviceCategory": "",
+//  	"VendorClassID": "",
+//  	"UserClassID": "",
+//  	"ClientID": "01:0A:7D:5C:93:78:5A",
+//  	"SerialNumber": "",
+//  	"ProductClass": "",
+//  	"OUI": "",
+//  	"DHCPOption55": "[1,121,3,6,15,108,114,119,252,95,44,46]",
+//  	"IPAddress": "",
+//  	"IPAddressSource": "",
+//  	"Location": "",
+//  	"PhysAddress": "0A:7D:5C:93:78:5A",
+//  	"Layer2Interface": "wl0",
+//  	"InterfaceName": "wl0",
+//  	"MACVendor": "",
+//  	"Owner": "",
+//  	"UniqueID": "urn:uuid:8dd9b8ec-0b28-4570-9d98-ea1292e0cf91",
+//  	"SignalStrength": -75,
+//  	"SignalNoiseRatio": 16,
+//  	"LastDataDownlinkRate": 5500,
+//  	"LastDataUplinkRate": 5500,
+//  	"EncryptionMode": "Default",
+//  	"LinkBandwidth": "Unknown",
+//  	"SecurityModeEnabled": "None",
+//  	"HtCapabilities": "",
+//  	"VhtCapabilities": "",
+//  	"HeCapabilities": "",
+//  	"SupportedMCS": "",
+//  	"AuthenticationState": true,
+//  	"OperatingStandard": "n",
+//  	"OperatingFrequencyBand": "2.4GHz",
+//  	"AvgSignalStrengthByChain": -76,
+//  	"MaxBandwidthSupported": "20MHz",
+//  	"MaxDownlinkRateSupported": 0,
+//  	"MaxDownlinkRateReached": 117000,
+//  	"DownlinkMCS": 0,
+//  	"DownlinkBandwidth": 0,
+//  	"DownlinkShortGuard": false,
+//  	"UplinkMCS": 0,
+//  	"UplinkBandwidth": 0,
+//  	"UplinkShortGuard": false,
+//  	"MaxUplinkRateSupported": 0,
+//  	"MaxUplinkRateReached": 11000,
+//  	"MaxTxSpatialStreamsSupported": 0,
+//  	"MaxRxSpatialStreamsSupported": 0,
+//  	"Index": "44",
+//  	"Names": [
+//  		{
+//  		"Name": "Device",
+//  		"Source": "default",
+//  		"Suffix": "44",
+//  		"Id": "default"
+//  		},
+//  		{
+//  		"Name": "MacBookPro",
+//  		"Source": "dhcp",
+//  		"Suffix": "1",
+//  		"Id": "dhcp"
+//  		}
+//  	],
+//  	"DeviceTypes": [
+//  		{
+//  		"Type": "Computer",
+//  		"Source": "default",
+//  		"Id": "default"
+//  		}
+//  	],
+//  	"BDD": {
+//  		"CloudVersion": "",
+//  		"BDDRequestsSent": 0,
+//  		"BDDRequestsAnswered": 0,
+//  		"BDDRequestsFailed": 0,
+//  		"DeviceName": "",
+//  		"DeviceType": "",
+//  		"ModelName": "",
+//  		"OperatingSystem": "",
+//  		"SoftwareVersion": "",
+//  		"Manufacturer": "",
+//  		"MACVendor": "",
+//  		"DeviceCategory": ""
+//  	},
+//  	"IPv4Address": [],
+//  	"IPv6Address": [],
+//  	"Locations": [],
+//  	"Groups": [],
+//  	"Priority": {
+//  		"Configuration": "All",
+//  		"Type": "BestEffort"
+//  	},
+//  	"SSWSta": {
+//  		"SupportedStandards": "",
+//  		"Supports24GHz": true,
+//  		"Supports5GHz": true,
+//  		"Supports6GHz": false,
+//  		"ReconnectClass": "",
+//  		"FailedSteerCount": 0,
+//  		"SuccessSteerCount": 0,
+//  		"AvgSteeringTime": 0,
+//  		"SupportedUNIIBands": "U-NII-1,U-NII-2C",
+//  		"VendorSpecificElementOUIList": "00:00:00"
+//  	},
+//  	"UserAgents": [],
+//  	"WANAccess": { "BlockedReasons": "" },
+//  	"InterfaceType": "Wi-Fi"
+//  }
+
 type Child struct {
 	Key             string    `json:"Key"`
 	DiscoverySource string    `json:"DiscoverySource"`
@@ -477,11 +599,11 @@ type Child struct {
 	} `json:"Names"`
 	DeviceTypes            []any   `json:"DeviceTypes"`
 	Children               []Child `json:"Children,omitempty"`
-	PortState              string  `json:"PortState,omitempty"`
-	PhysAddress            string  `json:"PhysAddress,omitempty"`
-	Layer2Interface        string  `json:"Layer2Interface,omitempty"`
-	InterfaceName          string  `json:"InterfaceName,omitempty"`
-	MACVendor              string  `json:"MACVendor,omitempty"`
+	PortState              string  `json:"PortState,omitempty"`       // "Connected"
+	PhysAddress            string  `json:"PhysAddress,omitempty"`     // "0A:7D:5C:93:78:5A"
+	Layer2Interface        string  `json:"Layer2Interface,omitempty"` // "wl0"
+	InterfaceName          string  `json:"InterfaceName,omitempty"`   // "wl0"
+	MACVendor              string  `json:"MACVendor,omitempty"`       // Always empty.
 	NetDevName             string  `json:"NetDevName,omitempty"`
 	NetDevIndex            int     `json:"NetDevIndex,omitempty"`
 	IPAddress              string  `json:"IPAddress,omitempty"`
