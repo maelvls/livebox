@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/goccy/go-yaml"
+	"github.com/maelvls/undent"
 	"github.com/spf13/cobra"
 )
 
@@ -96,6 +97,8 @@ func main() {
 		lsStaticLeasesCmd(),
 		getDMZCmd(),
 		setDMZCmd(),
+		rmDMZCmd(),
+		wifiCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -1079,19 +1082,34 @@ func setDMZ(address, contextID string, cookie *http.Cookie, ip string) error {
 }
 
 func deleteDMZ(address, contextID string, cookie *http.Cookie) error {
-	resp, err := executeRequest(address, contextID, cookie, "Firewall", "deleteDMZ", map[string]interface{}{"id": "webui"})
+	ip, err := getDMZ(address, contextID, cookie)
+	switch {
+	case errors.Is(err, ErrNoDMZ):
+		fmt.Println("No DMZ configured, nothing to do")
+		return nil
+	case err != nil:
+		return fmt.Errorf("failed to get DMZ: %w", err)
+	}
+
+	fmt.Printf("Removing DMZ for IP %s\n", ip)
+
+	resp, err := executeRequest(address, contextID, cookie, "Firewall", "deleteDMZ", map[string]interface{}{
+		"id": "webui",
+	})
 	if err != nil {
 		return err
 	}
 
 	var data struct {
-		Status bool `json:"status"` // true
+		Result struct {
+			Status bool `json:"status"` // true
+		} `json:"result"`
 	}
 	err = json.Unmarshal([]byte(resp), &data)
 	if err != nil {
 		return err
 	}
-	if !data.Status {
+	if !data.Result.Status {
 		return fmt.Errorf("failed to delete DMZ: %s", resp)
 	}
 
@@ -1194,5 +1212,200 @@ func apiCmd() *cobra.Command {
 			fmt.Println(string(responseBytes))
 			return nil
 		},
+	}
+}
+
+func wifiCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "wifi",
+		Short: "Set the WLAN configuration",
+		Long: undent.Undent(`
+			Set the WLAN configuration. Without a pass, the security is set to
+			"None". With a pass, the security is set to "WP2-Personal".
+
+			To configure the SSID and pass code for the 2.4 GHz and 5 GHz
+			bands simultaneously:
+
+			  livebox wifi config --ssid "Wifi-Valais" --pass "foobar" --24ghz --5ghz
+
+			If you omit "--24ghz --5ghz", both bands will be configured
+			simultanously:
+
+			  livebox wifi config --ssid "Wifi-Valais" --pass "foobar"
+
+			If you want to configure different settings for each band:
+
+			  livebox wifi config --24ghz --ssid "Wifi-Valais" --pass "foobar"
+			  livebox wifi config --5ghz --ssid "Wifi-Valais_5GHz" --pass "foobar"
+
+			To turn off both and turn on both bands:
+
+			  livebox wifi disable
+			  livebox wifi enable
+
+			To turn on and off only one band:
+
+			  livebox wifi disable --24ghz
+			  livebox wifi enable --5ghz
+		`),
+	}
+
+	var (
+		ghz24 bool
+		ghz5  bool
+	)
+
+	cmd.PersistentFlags().BoolVar(&ghz24, "24ghz", false, "Apply settings to 2.4GHz band")
+	cmd.PersistentFlags().BoolVar(&ghz5, "5ghz", false, "Apply settings to 5GHz band")
+
+	wlanEnableCmd := func() *cobra.Command {
+		cmd := &cobra.Command{
+			Use:   "enable",
+			Short: "Enable WLAN",
+			RunE:  enableDisableWLANCmd(&ghz5, &ghz24, "enable"),
+		}
+		return cmd
+	}()
+	wlanDisableCmd := func() *cobra.Command {
+		cmd := &cobra.Command{
+			Use:   "disable",
+			Short: "Disable WLAN",
+			RunE:  enableDisableWLANCmd(&ghz5, &ghz24, "disable"),
+		}
+		return cmd
+	}()
+
+	wlanConfigCmd := func() *cobra.Command {
+		var ssid, pass string
+		cmd := &cobra.Command{
+			Use:   "config",
+			Short: "Configure WLAN settings",
+			RunE: func(cmd *cobra.Command, args []string) error {
+				config, err := loadConfig()
+				if err != nil {
+					return err
+				}
+				address, username, password := mergeFlagsWithConfig(config)
+
+				contextID, cookie, err := authenticate(address, username, password)
+				if err != nil {
+					return err
+				}
+
+				// Determine the security mode based on whether a password is provided.
+				securityMode := "None"
+				if pass != "" {
+					securityMode = "WP2-Personal"
+				}
+
+				// If neither 2.4GHz nor 5GHz is specified, apply to both.
+				if !ghz24 && !ghz5 {
+					ghz24 = true
+					ghz5 = true
+				}
+
+				wlanvap := make(map[string]interface{})
+				if ghz24 {
+					wlanvap["wl0"] = map[string]interface{}{
+						"SSID":                     ssid,
+						"SSIDAdvertisementEnabled": true,
+						"Security":                 map[string]interface{}{"ModeEnabled": securityMode, "KeyPassPhrase": pass},
+						"MACFiltering":             map[string]interface{}{"Mode": "Off"},
+						"WPS":                      map[string]interface{}{"Enable": false},
+					}
+				}
+				if ghz5 {
+					wlanvap["eth4"] = map[string]interface{}{
+						"SSID":                     ssid,
+						"SSIDAdvertisementEnabled": true,
+						"Security":                 map[string]interface{}{"ModeEnabled": securityMode, "KeyPassPhrase": pass},
+						"MACFiltering":             map[string]interface{}{"Mode": "Off"},
+						"WPS":                      map[string]interface{}{"Enable": false},
+					}
+				}
+
+				params := map[string]interface{}{
+					"mibs": map[string]interface{}{"wlanvap": wlanvap},
+				}
+				_, err = executeRequest(address, contextID, cookie, "NeMo.Intf.lan", "setWLANConfig", params)
+				if err != nil {
+					return fmt.Errorf("failed to set WLAN config: %w", err)
+				}
+
+				fmt.Println("WLAN configuration updated successfully")
+				return nil
+			},
+		}
+
+		cmd.Flags().StringVar(&ssid, "ssid", "", "WLAN SSID")
+		cmd.Flags().StringVar(&pass, "pass", "", "WLAN password")
+		if err := cmd.MarkFlagRequired("ssid"); err != nil {
+			panic(err) // MarkFlagRequired only returns an error when the flag does not exist
+		}
+		return cmd
+	}()
+
+	cmd.AddCommand(
+		wlanEnableCmd,
+		wlanDisableCmd,
+		wlanConfigCmd,
+	)
+
+	return cmd
+}
+
+// Action = "enable" or "disable".
+func enableDisableWLANCmd(ghz5, ghz24 *bool, action string) func(cmd *cobra.Command, args []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		config, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		address, username, password := mergeFlagsWithConfig(config)
+
+		contextID, cookie, err := authenticate(address, username, password)
+		if err != nil {
+			return err
+		}
+
+		// If neither 2.4GHz nor 5GHz is specified, apply to both.
+		if !*ghz24 && !*ghz5 {
+			*ghz24 = true
+			*ghz5 = true
+		}
+
+		enable := false
+		if action == "enable" {
+			enable = true
+		}
+
+		penable := make(map[string]interface{})
+		if *ghz5 {
+			penable["eth4"] = map[string]interface{}{
+				"Enable":           enable,
+				"PersistentEnable": true,
+				"Status":           true,
+			}
+		}
+		if *ghz24 {
+			penable["wl0"] = map[string]interface{}{
+				"Enable":           enable,
+				"PersistentEnable": true,
+				"Status":           true,
+			}
+		}
+
+		params := map[string]interface{}{
+			"mibs": map[string]interface{}{
+				"penable": penable,
+			},
+		}
+
+		_, err = executeRequest(address, contextID, cookie, "NeMo.Intf.lan", "setWLANConfig", params)
+		if err != nil {
+			return fmt.Errorf("failed to set WLAN config: %w", err)
+		}
+
+		return nil
 	}
 }

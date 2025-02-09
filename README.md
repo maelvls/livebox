@@ -29,55 +29,86 @@ To reboot the Livebox:
 livebox reboot
 ```
 
-Features:
+## Wi-fi
 
-```text
-% livebox --help
-A CLI for interacting with a Livebox 4 or 5 (Orange). To authenticate, you can either use
-the login command, or provide the password with --password or LIVEBOX_PASSWORD.
-When using the login command, the credentials are saved in
-~/.config/livebox.yml. This file has the format:
+You can also configure your Wi-Fi. To configure the SSID and pass code for the
+2.4 GHz and 5 GHz bands simultaneously:
 
-    address: 192.168.1.1
-    username: admin
-    password: password
+```sh
+livebox wifi config --ssid "Wifi-Valais" --pass "foobar" --24ghz --5ghz
+```
 
+If you omit both `--24ghz` and `--5ghz`, both bands will be configured
+simultanously:
 
-Usage:
-    livebox <command> [options]
+```sh
+livebox wifi config --ssid "Wifi-Valais" --pass "foobar"
+```
 
-Commands:
-    login        Authenticate to the livebox and save the information in
-                 ~/.config/livebox.yml.
-    ls           List all devices known and their IPs.
-    reboot       Reboots the livebox. Useful when upstream or downstream
-                 bandwiths aren't great.
-    phone        Show recent phone calls. Useful to report unwanted/spam calls.
-    speed        Show the DSL Downstream and Upstream speeds. The 0.96 weight
-                 mentioned in speed --raw is already applied.
-    speedraw     Show the output of NeMo.Intf.data/getMIBs. The numbers
-                 like 'downstream current rate' are given in kbit/s. Depending
-                 on your link mode (vdsl, dsl), this raw number has to be
-                 weighted in order to know your real downstream bandwith:
-                   - dsl: the real bandwidth is DownstreamCurrRate * 0.88
-                   - vdsl: the real bandwidth is DownstreamCurrRate * 0.96
-                 See: http://192.168.1.1/internal/internetState/tile.js
-    dsl          Show the output of NeMo.Intf.dsl0/getDSLStats.
-    firewall     List firewall IPv4 settings.
-    set-pinhole  Add a firewall rule for IPv4.
-    api          Send a raw API request. You have to provide the JSON payload
-                 on stdin.
+If you want to configure different settings for each band:
 
-Options:
-    --username   Username to use for authentication. Defaults to "admin".
-                 You can also use LIVEBOX_USERNAME.
-    --password   Password to use for authentication. You can also use
-                 LIVEBOX_PASSWORD.
-    --address    IP or hostname of the livebox. Default: "192.168.1.1". You can
-                 also use LIVEBOX_ADDRESS.
-    --help, -h   Show help.
-    --debug, -d  Enable debug output on stderr, inluding curl's call
-                 bodies and responses.
+```sh
+livebox wifi config --24ghz --ssid "Wifi-Valais" --pass "foobar"
+livebox wifi config --5ghz --ssid "Wifi-Valais_5GHz" --pass "foobar"
+```
 
-Maël Valais, 2024.
+To turn off both and turn on both bands:
+
+```sh
+livebox wifi disable
+livebox wifi enable
+```
+
+To turn on and off only one band:
+
+```sh
+livebox wifi disable --24ghz
+livebox wifi enable --5ghz
+```
+
+## Firewall
+
+You can configure the firewall using the CLI.
+
+For IPv4 TCP port forwarding:
+
+```sh
+livebox set-port-forwarding pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
+```
+
+You can add the `--udp` flag to forward UDP traffic instead of TCP.
+
+Regarding IPv6 pinholes, you can do that too:
+
+```sh
+livebox set-pinhole tailscale-pi-ipv6 --to-port 41642 --to-ip 192.168.1.160 --to-mac e4:5f:01:a6:65:fe --udp
+```
+
+## DHCP
+
+To configure a static lease:
+
+```sh
+livebox set-static-lease --mac bc:d0:74:32:e9:1a --ip 192.168.1.155
+```
+
+To list the static leases:
+
+```sh
+livebox ls-static-leases
+```
+
+## DMZ
+
+To configure the DMZ:
+
+```sh
+livebox set-dmz 192.168.1.160
+```
+
+Also, you can disable the DMZ and see one is configured:
+
+```sh
+livebox disable-dmz
+livebox get-dmz       # Returns the IP of the DMZ'ed device.
 ```
