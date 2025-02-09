@@ -85,7 +85,7 @@ You can configure the firewall using the CLI.
 For IPv4 TCP port forwarding:
 
 ```sh
-livebox set-port-forward pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
+livebox port-forward set pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
 ```
 
 You can add the `--udp` flag to forward UDP traffic instead of TCP.
@@ -93,7 +93,7 @@ You can add the `--udp` flag to forward UDP traffic instead of TCP.
 Regarding IPv6 pinholes, you can do that too:
 
 ```sh
-livebox set-pinhole tailscale-pi-ipv6 --to-port 41642 --to-ip 192.168.1.160 --to-mac e4:5f:01:a6:65:fe --udp
+livebox pinhole set tailscale-pi-ipv6 --to-port 41642 --to-ip 192.168.1.160 --to-mac e4:5f:01:a6:65:fe --udp
 ```
 
 ## DHCP
@@ -101,13 +101,13 @@ livebox set-pinhole tailscale-pi-ipv6 --to-port 41642 --to-ip 192.168.1.160 --to
 To configure a static lease:
 
 ```sh
-livebox set-static-lease --mac bc:d0:74:32:e9:1a --ip 192.168.1.155
+livebox static-lease set bc:d0:74:32:e9:1a 192.168.1.155
 ```
 
 To list the static leases:
 
 ```sh
-livebox ls-static-leases
+livebox static-lease ls
 ```
 
 ## DMZ

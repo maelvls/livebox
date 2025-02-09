@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/goccy/go-yaml"
 	"github.com/maelvls/undent"
 	"github.com/spf13/cobra"
@@ -87,7 +89,7 @@ func main() {
 		rebootCmd(),
 		phoneCmd(),
 		speedCmd(),
-		firewallCmd(),
+		portForwardCmd(),
 		pinholeCmd(),
 		apiCmd(),
 		staticLeaseCmd(),
@@ -345,21 +347,33 @@ func lsCmd() *cobra.Command {
 				return err
 			}
 
-			// Parse the JSON response and extract the IP addresses, MAC
-			// addresses, and names.
-			var data map[string]interface{}
+			// Extract the devices from the response.
+			var data struct {
+				Result struct {
+					Status struct {
+						Devices []struct {
+							IPAddress   string `json:"IPAddress"`
+							PhysAddress string `json:"PhysAddress"`
+							Name        string `json:"Name"`
+						} `json:"devices"`
+					} `json:"status"`
+				} `json:"result"`
+			}
 			err = json.Unmarshal([]byte(response), &data)
 			if err != nil {
 				return fmt.Errorf("failed to unmarshal response: %w", err)
 			}
 
-			// Extract the devices from the response.
-			devices := extractDevices(data)
-
-			// Print the devices.
-			for _, device := range devices {
-				fmt.Printf("%s %s %s\n", device.IPAddress, device.PhysAddress, device.Name)
+			var rows [][]string
+			for _, device := range data.Result.Status.Devices {
+				rows = append(rows, []string{device.Name, device.IPAddress, device.PhysAddress})
 			}
+			t := table.New().
+				Border(lipgloss.NormalBorder()).
+				Headers("Name", "IP Address", "MAC Address").
+				Rows(rows...)
+
+			fmt.Println(t.String())
 
 			return nil
 		},
@@ -370,38 +384,6 @@ type Device struct {
 	IPAddress   string
 	PhysAddress string
 	Name        string
-}
-
-func extractDevices(data map[string]interface{}) []Device {
-	var devices []Device
-	extractDevicesRecursive(data, &devices)
-	return devices
-}
-
-func extractDevicesRecursive(data interface{}, devices *[]Device) {
-	switch v := data.(type) {
-	case map[string]interface{}:
-		if name, ok := v["Name"].(string); ok {
-			if ipAddress, ok := v["IPAddress"].(string); ok && ipAddress != "" {
-				physAddress := ""
-				if physAddressRaw, ok := v["PhysAddress"]; ok {
-					physAddress = fmt.Sprintf("%v", physAddressRaw)
-				}
-				*devices = append(*devices, Device{
-					IPAddress:   ipAddress,
-					PhysAddress: physAddress,
-					Name:        name,
-				})
-			}
-		}
-		for _, value := range v {
-			extractDevicesRecursive(value, devices)
-		}
-	case []interface{}:
-		for _, value := range v {
-			extractDevicesRecursive(value, devices)
-		}
-	}
 }
 
 func rebootCmd() *cobra.Command {
@@ -512,94 +494,6 @@ func speedCmd() *cobra.Command {
 	}
 }
 
-func firewallCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "firewall",
-		Short: "List firewall IPv4 settings",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			config, err := loadConfig()
-			if err != nil {
-				return err
-			}
-			address, username, password := mergeFlagsWithConfig(config)
-
-			contextID, cookie, err := authenticate(address, username, password)
-			if err != nil {
-				return err
-			}
-
-			printFirewallRules := func(ipVersion string) error {
-				var method string
-				switch ipVersion {
-				case "IPv4":
-					method = "getPortForwarding"
-				case "IPv6":
-					method = "getPinhole"
-				default:
-					return fmt.Errorf("invalid IP version: %s", ipVersion)
-				}
-
-				response, err := executeRequest(address, contextID, cookie, "Firewall", method, map[string]interface{}{})
-				if err != nil {
-					return err
-				}
-
-				var data map[string]interface{}
-				err = json.Unmarshal([]byte(response), &data)
-				if err != nil {
-					return fmt.Errorf("failed to unmarshal response: %w", err)
-				}
-
-				status, ok := data["status"].([]interface{})
-				if !ok {
-					fmt.Println(response)
-					return fmt.Errorf("could not find status in response")
-				}
-
-				for _, rule := range status {
-					ruleData, ok := rule.(map[string]interface{})
-					if !ok {
-						fmt.Printf("Invalid rule data: %v\n", rule)
-						continue
-					}
-
-					var protocol, sourcePrefix, externalPort, destinationIPAddress, internalPort, id string
-					switch ipVersion {
-					case "IPv4":
-						protocol = fmt.Sprintf("%v", ruleData["Protocol"])
-						sourcePrefix = fmt.Sprintf("%v", ruleData["SourcePrefix"])
-						externalPort = fmt.Sprintf("%v", ruleData["ExternalPort"])
-						destinationIPAddress = fmt.Sprintf("%v", ruleData["DestinationIPAddress"])
-						internalPort = fmt.Sprintf("%v", ruleData["InternalPort"])
-						id = fmt.Sprintf("%v", ruleData["Id"])
-
-						fmt.Printf("%s %s\t%s:%s\t-> %s:%s\t%s\n", ipVersion, protocol, sourcePrefix, externalPort, destinationIPAddress, internalPort, id)
-					case "IPv6":
-						protocol = fmt.Sprintf("%v", ruleData["Protocol"])
-						sourcePrefix = fmt.Sprintf("%v", ruleData["SourcePrefix"])
-						externalPort = fmt.Sprintf("%v", ruleData["SourcePort"])
-						destinationIPAddress = fmt.Sprintf("%v", ruleData["DestinationIPAddress"])
-						internalPort = fmt.Sprintf("%v", ruleData["DestinationPort"])
-						id = fmt.Sprintf("%v", ruleData["Id"])
-
-						fmt.Printf("%s %s\t%s:%s\t-> %s:%s\t%s\n", ipVersion, protocol, sourcePrefix, externalPort, destinationIPAddress, internalPort, id)
-					}
-				}
-				return nil
-			}
-
-			if err := printFirewallRules("IPv4"); err != nil {
-				return err
-			}
-			if err := printFirewallRules("IPv6"); err != nil {
-				return err
-			}
-
-			return nil
-		},
-	}
-}
-
 func pinholeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pinhole",
@@ -643,9 +537,59 @@ func pinholeLsCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Println(response)
+			// {"result":{"status":{"webui_tailscale":{"Id":"webui_tailscale","Origin":"webui","Description":"tailscale","Status":"Enabled","SourceInterface":"data","Protocol":"17","IPVersion":6,"SourcePort":"","DestinationPort":"41642","SourcePrefix":"","DestinationIPAddress":"fdd2:4769:8b41::207","DestinationMACAddress":"","Enable":true}}}}
+			var data struct {
+				Result struct {
+					Status map[string]struct {
+						ID                    string `json:"Id"`
+						Origin                string `json:"Origin"`
+						Description           string `json:"Description"`
+						Status                string `json:"Status"`
+						SourceInterface       string `json:"SourceInterface"`
+						Protocol              string `json:"Protocol"`
+						IPVersion             int    `json:"IPVersion"`
+						SourcePort            string `json:"SourcePort"`
+						DestinationPort       string `json:"DestinationPort"`
+						SourcePrefix          string `json:"SourcePrefix"`
+						DestinationIPAddress  string `json:"DestinationIPAddress"`
+						DestinationMACAddress string `json:"DestinationMACAddress"`
+						Enable                bool   `json:"Enable"`
+					} `json:"status"`
+				} `json:"result"`
+			}
+			err = json.Unmarshal([]byte(response), &data)
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal response: %w", err)
+			}
+
+			var rows [][]string
+			for _, rule := range data.Result.Status {
+				rows = append(rows, []string{
+					rule.ID,
+					fmt.Sprintf("%s/%s", rule.DestinationPort, protocToString(rule.Protocol)),
+					rule.DestinationIPAddress,
+				})
+			}
+			t := table.New().
+				Border(lipgloss.NormalBorder()).
+				Headers("ID", "to IP", "to port").
+				Rows(rows...)
+
+			fmt.Println(t.String())
+
 			return nil
 		},
+	}
+}
+
+func protocToString(protocol string) string {
+	switch protocol {
+	case "6":
+		return "tcp"
+	case "17":
+		return "udp"
+	default:
+		return "unknown"
 	}
 }
 
@@ -786,6 +730,14 @@ func portForwardLsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls",
 		Short: "List all port forwarding rules",
+		Long: undent.Undent(`
+			List all port forwarding rules. By default, it sets a TCP rule. To set
+			a UDP rule, use the --udp flag.
+
+			Example:
+
+			  livebox port-forward set [--udp] pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
 			if err != nil {
@@ -803,7 +755,48 @@ func portForwardLsCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Println(response)
+			var data struct {
+				Result struct {
+					Status map[string]struct {
+						ID                    string `json:"Id"`
+						Origin                string `json:"Origin"`
+						Description           string `json:"Description"`
+						Status                string `json:"Status"`
+						SourceInterface       string `json:"SourceInterface"`
+						Protocol              string `json:"Protocol"`
+						ExternalPort          string `json:"ExternalPort"`
+						InternalPort          string `json:"InternalPort"`
+						SourcePrefix          string `json:"SourcePrefix"`
+						DestinationIPAddress  string `json:"DestinationIPAddress"`
+						DestinationMACAddress string `json:"DestinationMACAddress"`
+						LeaseDuration         int    `json:"LeaseDuration"`
+						HairpinNAT            bool   `json:"HairpinNAT"`
+						SymmetricSNAT         bool   `json:"SymmetricSNAT"`
+						UPnPV1Compat          bool   `json:"UPnPV1Compat"`
+						Enable                bool   `json:"Enable"`
+					} `json:"status"`
+				} `json:"result"`
+			}
+			err = json.Unmarshal([]byte(response), &data)
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal response: %w", err)
+			}
+			var rows [][]string
+			for _, rule := range data.Result.Status {
+				rows = append(rows, []string{
+					rule.ID,
+					fmt.Sprintf("%s/%s", rule.ExternalPort, protocToString(rule.Protocol)),
+					rule.DestinationIPAddress,
+					rule.InternalPort,
+				})
+			}
+			t := table.New().
+				Border(lipgloss.NormalBorder()).
+				Headers("ID", "from", "to IP", "to port").
+				Rows(rows...)
+
+			fmt.Println(t.String())
+
 			return nil
 		},
 	}
@@ -996,9 +989,19 @@ func staticLeaseLsCmd() *cobra.Command {
 				return fmt.Errorf("failed to get static leases: %w", err)
 			}
 
+			var rows [][]string
 			for _, lease := range leases {
-				fmt.Printf("%s %s %s\n", lease.IPAddress, lease.MACAddress, lease.LeasePath)
+				rows = append(rows, []string{
+					lease.MACAddress,
+					lease.IPAddress,
+				})
 			}
+			t := table.New().
+				Border(lipgloss.NormalBorder()).
+				Headers("MAC address", "IP address").
+				Rows(rows...)
+
+			fmt.Println(t.String())
 
 			return nil
 		},
@@ -1362,35 +1365,6 @@ func deleteDMZ(address, contextID string, cookie *http.Cookie) error {
 	}
 
 	return nil
-}
-
-func staticLeasesLsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "ls",
-		Short: "List static leases",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			config, err := loadConfig()
-			if err != nil {
-				return err
-			}
-			address, username, password := mergeFlagsWithConfig(config)
-			contextID, cookie, err := authenticate(address, username, password)
-			if err != nil {
-				return err
-			}
-
-			leases, err := getStaticLeases(address, contextID, cookie)
-			if err != nil {
-				return err
-			}
-
-			for _, lease := range leases {
-				fmt.Printf("%s %s\n", lease.IPAddress, lease.MACAddress)
-			}
-
-			return nil
-		},
-	}
 }
 
 func mergeFlagsWithConfig(config Config) (address, username, password string) {
