@@ -29,6 +29,18 @@ To reboot the Livebox:
 livebox reboot
 ```
 
+You can do raw API calls too:
+
+```sh
+livebox api <<<'{"service":"NeMo.Intf.lan","method":"getMIBs","parameters":{"mibs":"base wlanradio"}}'
+```
+
+Show your DSL speed (doesn't work for fiber connections, only DSL):
+
+```sh
+livebox speed
+```
+
 ## Wi-fi
 
 You can also configure your Wi-Fi. To configure the SSID and pass code for the

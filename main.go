@@ -87,7 +87,6 @@ func main() {
 		rebootCmd(),
 		phoneCmd(),
 		speedCmd(),
-		speedRawCmd(),
 		dslCmd(),
 		firewallCmd(),
 		setPinholeCmd(),
@@ -471,64 +470,39 @@ func speedCmd() *cobra.Command {
 				return err
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "NeMo.Intf.data", "getMIBs", map[string]interface{}{"mibs": "dsl"})
+			response, err := executeRequest(address, contextID, cookie, "NeMo.Intf.data", "getMIBs", map[string]interface{}{
+				"mibs": "dsl",
+			})
 			if err != nil {
 				return err
 			}
 
-			var data map[string]interface{}
+			var data struct {
+				Result struct {
+					Status struct {
+						Dsl struct {
+							Dsl0 struct {
+								DownstreamCurrRate int `json:"DownstreamCurrRate"`
+								UpstreamCurrRate   int `json:"UpstreamCurrRate"`
+							} `json:"dsl0"`
+						} `json:"dsl"`
+					} `json:"status"`
+				} `json:"result"`
+			}
 			err = json.Unmarshal([]byte(response), &data)
 			if err != nil {
 				return fmt.Errorf("failed to unmarshal response: %w", err)
 			}
 
-			status, ok := data["result"].(map[string]interface{})["status"].(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("could not find result.status in response")
-			}
-			dsl0, ok := status["dsl"].(map[string]interface{})["dsl0"].(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("could not find result.status.dsl.dsl0 in response")
+			if data.Result.Status.Dsl.Dsl0.DownstreamCurrRate == 0 && data.Result.Status.Dsl.Dsl0.UpstreamCurrRate == 0 {
+				return fmt.Errorf("no DSL data found. Note that this command only works for DSL connections, not fiber.")
 			}
 
-			downstreamCurrRate, ok := dsl0["DownstreamCurrRate"].(float64)
-			if !ok {
-				return fmt.Errorf("could not find result.status.dsl.dsl0.DownstreamCurrRate in response")
-			}
-			upstreamCurrRate, ok := dsl0["UpstreamCurrRate"].(float64)
-			if !ok {
-				return fmt.Errorf("could not find result.status.dsl.dsl0.UpstreamCurrRate in response")
-			}
-
-			fmt.Printf("\033[91m↓ %.1f Mbps\033[0m\n\033[92m↑ %.1f Mbps\033[0m\n", downstreamCurrRate*0.96/1000, upstreamCurrRate*0.96/1000)
-
-			return nil
-		},
-	}
-}
-
-func speedRawCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "speedraw",
-		Short: "Show the output of NeMo.Intf.data/getMIBs",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			config, err := loadConfig()
-			if err != nil {
-				return err
-			}
-			address, username, password := mergeFlagsWithConfig(config)
-
-			contextID, cookie, err := authenticate(address, username, password)
-			if err != nil {
-				return err
-			}
-
-			response, err := executeRequest(address, contextID, cookie, "NeMo.Intf.data", "getMIBs", map[string]interface{}{"mibs": "dsl"})
-			if err != nil {
-				return err
-			}
-
-			fmt.Println(response)
+			downstreamCurrRate := float64(data.Result.Status.Dsl.Dsl0.DownstreamCurrRate)
+			upstreamCurrRate := float64(data.Result.Status.Dsl.Dsl0.UpstreamCurrRate)
+			fmt.Printf("\033[91m↓ %.1f Mbps\033[0m\n\033[92m↑ %.1f Mbps\033[0m\n",
+				downstreamCurrRate*0.96/1000,
+				upstreamCurrRate*0.96/1000)
 			return nil
 		},
 	}
@@ -1164,7 +1138,7 @@ func mergeFlagsWithConfig(config Config) (address, username, password string) {
 func apiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "api",
-		Short: "Send a raw API request",
+		Short: "Send a raw API request from stdin",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
 			if err != nil {
@@ -1177,13 +1151,12 @@ func apiCmd() *cobra.Command {
 				return err
 			}
 
-			// Read the JSON payload from stdin
+			// Read the JSON payload from stdin.
 			payloadBytes, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				return fmt.Errorf("failed to read payload from stdin: %w", err)
 			}
 
-			// Execute the request
 			requestURL := fmt.Sprintf("http://%s/ws", address)
 			req, err := http.NewRequest("POST", requestURL, bytes.NewBuffer(payloadBytes))
 			if err != nil {
@@ -1203,13 +1176,11 @@ func apiCmd() *cobra.Command {
 			}
 			defer resp.Body.Close()
 
-			// Read the response body
-			responseBytes, err := io.ReadAll(resp.Body)
+			// Print body to stdout.
+			_, err = io.Copy(os.Stdout, resp.Body)
 			if err != nil {
-				return fmt.Errorf("failed to read response body: %w", err)
+				return fmt.Errorf("failed to print response to stdout: %w", err)
 			}
-
-			fmt.Println(string(responseBytes))
 			return nil
 		},
 	}
