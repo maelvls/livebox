@@ -115,12 +115,12 @@ livebox static-lease ls
 To configure the DMZ:
 
 ```sh
-livebox set-dmz 192.168.1.160
+livebox dmz set 192.168.1.160
 ```
 
-Also, you can disable the DMZ and see one is configured:
+Also, you can remove the DMZ and see if one is configured:
 
 ```sh
-livebox disable-dmz
-livebox get-dmz       # Returns the IP of the DMZ'ed device.
+livebox dmz rm
+livebox dmz get       # Returns the IP of the DMZ'ed device.
 ```
