@@ -94,6 +94,8 @@ func main() {
 		setPortForwarding(),
 		addStaticLeaseCmd(),
 		lsStaticLeasesCmd(),
+		getDMZCmd(),
+		setDMZCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -898,6 +900,67 @@ func addStaticLeaseCmd() *cobra.Command {
 	return cmd
 }
 
+func getDMZCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "get-dmz",
+		Short: "Get the current IP configured in the DMZ",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			ip, err := getDMZ(address, contextID, cookie)
+			if err != nil {
+				if errors.Is(err, ErrNoDMZ) {
+					return fmt.Errorf("no DMZ configured")
+				}
+				return err
+			}
+
+			fmt.Println(ip)
+			return nil
+		},
+	}
+}
+
+func setDMZCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set-dmz",
+		Short: "Set the DMZ configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			if len(args) != 1 {
+				return fmt.Errorf("expected a single argument: the IPv4 address to set as DMZ")
+			}
+			ip := args[0]
+
+			err = setDMZ(address, contextID, cookie, ip)
+			if err != nil {
+				return fmt.Errorf("failed to set DMZ: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	return cmd
+}
+
 type StaticLease struct {
 	IPAddress  string `json:"IPAddress"`
 	MACAddress string `json:"MACAddress"`
@@ -924,6 +987,115 @@ func getStaticLeases(address, contextID string, cookie *http.Cookie) ([]StaticLe
 	}
 
 	return data.Result.Status, nil
+}
+
+func rmDMZCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm-dmz",
+		Short: "Remove the DMZ configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			err = deleteDMZ(address, contextID, cookie)
+			if err != nil {
+				return fmt.Errorf("failed to delete DMZ: %w", err)
+			}
+
+			return nil
+		},
+	}
+}
+
+var (
+	ErrNoDMZ = fmt.Errorf("no DMZ configured")
+)
+
+// To know if no DMZ was found, you can use:
+//
+//	errors.Is(err, ErrNoDMZ)
+func getDMZ(address, contextID string, cookie *http.Cookie) (ip string, _ error) {
+	response, err := executeRequest(address, contextID, cookie, "Firewall", "getDMZ", map[string]interface{}{})
+	if err != nil {
+		return "", err
+	}
+
+	var data struct {
+		Result struct {
+			Status struct {
+				WebUI struct {
+					SourceInterface      string `json:"SourceInterface"`      // "data"
+					DestinationIPAddress string `json:"DestinationIPAddress"` // "192.168.1.160"
+					SourcePrefix         string `json:"SourcePrefix"`         // ""
+					Status               string `json:"Status"`               // "Enabled"
+					Enable               bool   `json:"Enable"`               // true
+				} `json:"webui"`
+			} `json:"status"`
+		} `json:"result"`
+	}
+	err = json.Unmarshal([]byte(response), &data)
+	if err != nil {
+		return "", fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	if data.Result.Status.WebUI.Status == "" {
+		return "", ErrNoDMZ
+	}
+
+	return data.Result.Status.WebUI.DestinationIPAddress, nil
+}
+
+func setDMZ(address, contextID string, cookie *http.Cookie, ip string) error {
+	resp, err := executeRequest(address, contextID, cookie, "Firewall", "setDMZ", map[string]interface{}{
+		"id":                   "webui",
+		"sourceInterface":      "data",
+		"destinationIPAddress": ip,
+		"enable":               true,
+	})
+	if err != nil {
+		return err
+	}
+
+	var data struct {
+		Result struct {
+			Status string `json:"status"`
+		} `json:"result"`
+	}
+	err = json.Unmarshal([]byte(resp), &data)
+	if err != nil {
+		return err
+	}
+	if data.Result.Status != "webui" {
+		return fmt.Errorf("failed to set DMZ: %s", resp)
+	}
+
+	return nil
+}
+
+func deleteDMZ(address, contextID string, cookie *http.Cookie) error {
+	resp, err := executeRequest(address, contextID, cookie, "Firewall", "deleteDMZ", map[string]interface{}{"id": "webui"})
+	if err != nil {
+		return err
+	}
+
+	var data struct {
+		Status bool `json:"status"` // true
+	}
+	err = json.Unmarshal([]byte(resp), &data)
+	if err != nil {
+		return err
+	}
+	if !data.Status {
+		return fmt.Errorf("failed to delete DMZ: %s", resp)
+	}
+
+	return nil
 }
 
 func lsStaticLeasesCmd() *cobra.Command {
