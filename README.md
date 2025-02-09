@@ -85,7 +85,7 @@ You can configure the firewall using the CLI.
 For IPv4 TCP port forwarding:
 
 ```sh
-livebox set-port-forwarding pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
+livebox set-port-forward pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
 ```
 
 You can add the `--udp` flag to forward UDP traffic instead of TCP.

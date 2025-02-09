@@ -87,16 +87,11 @@ func main() {
 		rebootCmd(),
 		phoneCmd(),
 		speedCmd(),
-		dslCmd(),
 		firewallCmd(),
-		setPinholeCmd(),
+		pinholeCmd(),
 		apiCmd(),
-		setPortForwarding(),
-		addStaticLeaseCmd(),
-		lsStaticLeasesCmd(),
-		getDMZCmd(),
-		setDMZCmd(),
-		rmDMZCmd(),
+		staticLeaseCmd(),
+		dmzCmd(),
 		wifiCmd(),
 	)
 
@@ -242,6 +237,15 @@ func (e APIErrors) Error() string {
 		errs = append(errs, fmt.Sprintf("  * %d: %s: %s", err.Error, err.Description, err.Info))
 	}
 	return strings.Join(errs, "\n")
+}
+
+func (e APIErrors) GetCode(code int) (APIError, bool) {
+	for _, err := range e {
+		if err.Error == code {
+			return err, true
+		}
+	}
+	return APIError{}, false
 }
 
 type APIError struct {
@@ -508,51 +512,6 @@ func speedCmd() *cobra.Command {
 	}
 }
 
-func dslCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "dsl",
-		Short: "Show the output of NeMo.Intf.dsl0/getDSLStats",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			config, err := loadConfig()
-			if err != nil {
-				return err
-			}
-			address, username, password := mergeFlagsWithConfig(config)
-
-			contextID, cookie, err := authenticate(address, username, password)
-			if err != nil {
-				return err
-			}
-
-			services := []string{"NMC", "NetMaster", "NeMo.Intf.dsl0"}
-			methods := map[string][]string{
-				"NMC":            {"get"},
-				"NetMaster":      {"getWANModeList", "getInterfaceConfig"},
-				"NeMo.Intf.dsl0": {"getDSLStats"},
-			}
-
-			for _, service := range services {
-				for _, method := range methods[service] {
-					var params map[string]interface{}
-					if method == "getInterfaceConfig" {
-						params = map[string]interface{}{"name": "VDSL_DHCP"}
-					} else {
-						params = map[string]interface{}{}
-					}
-					response, err := executeRequest(address, contextID, cookie, service, method, params)
-					if err != nil {
-						fmt.Printf("Error calling %s/%s: %v\n", service, method, err)
-						continue
-					}
-					fmt.Printf("Response from %s/%s:\n%s\n", service, method, response)
-				}
-			}
-
-			return nil
-		},
-	}
-}
-
 func firewallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "firewall",
@@ -641,7 +600,56 @@ func firewallCmd() *cobra.Command {
 	}
 }
 
-func setPinholeCmd() *cobra.Command {
+func pinholeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "pinhole",
+		Short: "Manage pinhole rules",
+		Long: undent.Undent(`
+			Manage IPv6 pinhole rules.
+
+			Examples:
+			  livebox pinhole ls
+			  livebox pinhole set mypinhole --to-port 443 --to-ip
+		`),
+	}
+
+	cmd.AddCommand(
+		pinholeLsCmd(),
+		pinholeSetCmd(),
+		pinholeRmCmd(),
+	)
+
+	return cmd
+}
+
+func pinholeLsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "ls",
+		Short: "List all pinhole rules",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			response, err := executeRequest(address, contextID, cookie, "Firewall", "getPinhole", map[string]interface{}{})
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(response)
+			return nil
+		},
+	}
+}
+
+func pinholeSetCmd() *cobra.Command {
 	var toPort, toIP, toMAC string
 	var useUDP bool
 	cmd := &cobra.Command{
@@ -715,12 +723,98 @@ func setPinholeCmd() *cobra.Command {
 	return cmd
 }
 
-func setPortForwarding() *cobra.Command {
+func pinholeRmCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm",
+		Short: "Remove a pinhole rule",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			if len(args) != 1 {
+				return fmt.Errorf("expected a single argument: the name of the rule")
+			}
+			name := args[0]
+
+			payload := map[string]interface{}{
+				"id": name,
+			}
+
+			response, err := executeRequest(address, contextID, cookie, "Firewall", "deletePinhole", payload)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(response)
+			return nil
+		},
+	}
+}
+
+func portForwardCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "port-forward",
+		Short: "Manage forwarding rules",
+		Long: undent.Undent(`
+			Manage IPv4 port forwarding rules.
+
+			Examples:
+			  livebox port-forward ls
+			  livebox port-forward set [--udp] pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
+			  livebox port-forward rm pi443
+		`),
+	}
+
+	cmd.AddCommand(
+		portForwardLsCmd(),
+		portForwardSetCmd(),
+		portForwardRmCmd(),
+	)
+
+	return cmd
+}
+
+func portForwardLsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "ls",
+		Short: "List all port forwarding rules",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			response, err := executeRequest(address, contextID, cookie, "Firewall", "getPortForwarding", map[string]interface{}{})
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(response)
+			return nil
+		},
+	}
+}
+
+func portForwardSetCmd() *cobra.Command {
 	var fromPort, toPort, toIP, toMAC string
 	var useUDP bool
 	cmd := &cobra.Command{
-		Use:   "set-port-forwarding",
-		Short: "Set a firewall rule",
+		Use:   "set",
+		Short: "Set a port forwarding rule",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
 			if err != nil {
@@ -732,6 +826,7 @@ func setPortForwarding() *cobra.Command {
 				return err
 			}
 
+			// Parse the flags.
 			// Parse the flags.
 			if len(args) != 1 {
 				return fmt.Errorf("expected a single argument: the name of the rule")
@@ -786,6 +881,20 @@ func setPortForwarding() *cobra.Command {
 				return fmt.Errorf("failed to unmarshal response: %w", err)
 			}
 
+			// Check if the rule is overlapping another rule. The error is:
+			//  {
+			//      "error": 1114120,
+			//      "description": "Overlapping rule",
+			//      "info": "Port overlap detected: port[41642-41642] name[webui_tailscale2]"
+			//  }
+			var sErr APIErrors
+			if errors.As(err, &sErr) {
+				e, ok := sErr.GetCode(196640)
+				if ok {
+					return fmt.Errorf("%s.", e.Info)
+				}
+			}
+
 			if data.Result.Data.Rule.Status != "Enabled" {
 				return fmt.Errorf("failed to enable rule: %s", data.Result.Data.Rule.Status)
 			}
@@ -810,11 +919,67 @@ func setPortForwarding() *cobra.Command {
 	return cmd
 }
 
-func addStaticLeaseCmd() *cobra.Command {
-	var mac, ip string
+func portForwardRmCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm",
+		Short: "Remove a port forwarding rule",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return fmt.Errorf("expected a single argument: the name of the rule to remove")
+			}
+			name := args[0]
+
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			params := map[string]interface{}{
+				"id": name,
+			}
+			response, err := executeRequest(address, contextID, cookie, "Firewall", "deletePortForwarding", params)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(response)
+			return nil
+		},
+	}
+}
+
+func staticLeaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "set-static-lease",
-		Short: "Add a static lease",
+		Use:   "static-lease",
+		Short: "Manage static leases",
+		Long: undent.Undent(`
+			Manage static leases.
+
+			Examples:
+			  livebox static-lease ls
+			  livebox static-lease set 00:11:22:33:44:55 192.168.1.160
+			  livebox static-lease rm 00:11:22:33:44:55
+		`),
+	}
+
+	cmd.AddCommand(
+		staticLeaseLsCmd(),
+		staticLeaseSetCmd(),
+		staticLeaseRmCmd(),
+	)
+
+	return cmd
+}
+
+func staticLeaseLsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "ls",
+		Short: "List all static leases",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
 			if err != nil {
@@ -825,6 +990,89 @@ func addStaticLeaseCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			leases, err := getStaticLeases(address, contextID, cookie)
+			if err != nil {
+				return fmt.Errorf("failed to get static leases: %w", err)
+			}
+
+			for _, lease := range leases {
+				fmt.Printf("%s %s %s\n", lease.IPAddress, lease.MACAddress, lease.LeasePath)
+			}
+
+			return nil
+		},
+	}
+}
+
+func staticLeaseRmCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm",
+		Short: "Remove a static lease",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			mac := args[0]
+
+			leases, err := getStaticLeases(address, contextID, cookie)
+			if err != nil {
+				return fmt.Errorf("failed to get static leases: %w", err)
+			}
+
+			var leasePath string
+			for _, lease := range leases {
+				if lease.MACAddress == mac {
+					leasePath = lease.LeasePath
+					break
+				}
+			}
+
+			if leasePath == "" {
+				return fmt.Errorf("no lease found for MAC %s", mac)
+			}
+
+			params := map[string]interface{}{
+				"LeasePath": leasePath,
+			}
+
+			response, err := executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "deleteStaticLease", params)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(response)
+			return nil
+		},
+	}
+}
+
+func staticLeaseSetCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set",
+		Short: "Set an static lease",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			mac := args[0]
+			ip := args[1]
 
 			leases, err := getStaticLeases(address, contextID, cookie)
 			if err != nil {
@@ -870,16 +1118,13 @@ func addStaticLeaseCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&mac, "mac", "", "MAC address")
-	cmd.Flags().StringVar(&ip, "ip", "", "IP address")
-	cmd.MarkFlagRequired("mac")
-	cmd.MarkFlagRequired("ip")
+
 	return cmd
 }
 
-func getDMZCmd() *cobra.Command {
+func dmzGetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "get-dmz",
+		Use:   "get",
 		Short: "Get the current IP configured in the DMZ",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
@@ -906,10 +1151,11 @@ func getDMZCmd() *cobra.Command {
 	}
 }
 
-func setDMZCmd() *cobra.Command {
+func dmzSetCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "set-dmz",
+		Use:   "set",
 		Short: "Set the DMZ configuration",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
 			if err != nil {
@@ -966,10 +1212,38 @@ func getStaticLeases(address, contextID string, cookie *http.Cookie) ([]StaticLe
 	return data.Result.Status, nil
 }
 
-func rmDMZCmd() *cobra.Command {
+func dmzCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "dmz",
+		Short: "Manage DMZ",
+		Long: undent.Undent(`
+			Manage DMZ.
+
+			Examples:
+			  livebox dmz get
+			  livebox dmz set
+			  livebox dmz rm
+		`),
+	}
+
+	cmd.AddCommand(
+		dmzGetCmd(),
+		dmzSetCmd(),
+		dmzRmCmd(),
+	)
+
+	return cmd
+}
+
+func dmzRmCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "rm-dmz",
-		Short: "Remove the DMZ configuration",
+		Use:   "rm",
+		Short: "Remove the DMZ configuration.",
+		Long: undent.Undent(`
+			Remove the DMZ configuration.
+
+			There is only one DMZ configuration possible, so no need to specify an IP address.
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
 			if err != nil {
@@ -1090,9 +1364,9 @@ func deleteDMZ(address, contextID string, cookie *http.Cookie) error {
 	return nil
 }
 
-func lsStaticLeasesCmd() *cobra.Command {
+func staticLeasesLsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "ls-static-leases",
+		Use:   "ls",
 		Short: "List static leases",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
