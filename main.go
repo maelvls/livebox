@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -223,7 +224,7 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 	if len(result.Result.Errors) > 0 {
 		var errs []string
 		for _, err := range result.Result.Errors {
-			errs = append(errs, fmt.Sprintf("  * %d: %s: %s", err.Error, err.Description, err.Info))
+			errs = append(errs, fmt.Sprintf("  * %d: %s: %s", err.ErrorCode, err.Description, err.Info))
 		}
 		return "", fmt.Errorf("while running method '%s' on service %s:\n%w", method, service, APIErrors(result.Result.Errors))
 	}
@@ -236,14 +237,14 @@ type APIErrors []APIError
 func (e APIErrors) Error() string {
 	var errs []string
 	for _, err := range e {
-		errs = append(errs, fmt.Sprintf("  * %d: %s: %s", err.Error, err.Description, err.Info))
+		errs = append(errs, fmt.Sprintf("  * %d: %s: %s", err.ErrorCode, err.Description, err.Info))
 	}
 	return strings.Join(errs, "\n")
 }
 
 func (e APIErrors) GetCode(code int) (APIError, bool) {
 	for _, err := range e {
-		if err.Error == code {
+		if err.ErrorCode == code {
 			return err, true
 		}
 	}
@@ -251,9 +252,13 @@ func (e APIErrors) GetCode(code int) (APIError, bool) {
 }
 
 type APIError struct {
-	Error       int    `json:"error"`
+	ErrorCode   int    `json:"error"`
 	Description string `json:"description"`
 	Info        string `json:"info"`
+}
+
+func (e APIError) Error() string {
+	return fmt.Sprintf("%d: %s: %s", e.ErrorCode, e.Description, e.Info)
 }
 
 func loginCmd() *cobra.Command {
@@ -350,12 +355,67 @@ func lsCmd() *cobra.Command {
 			// Extract the devices from the response.
 			var data struct {
 				Result struct {
-					Status struct {
-						Devices []struct {
-							IPAddress   string `json:"IPAddress"`
-							PhysAddress string `json:"PhysAddress"`
-							Name        string `json:"Name"`
-						} `json:"devices"`
+					Status []struct {
+						LastUpdate            time.Time `json:"LastUpdate"`
+						DiagnosticMode        string    `json:"DiagnosticMode"`
+						APIVersion            string    `json:"APIVersion"`
+						Key                   string    `json:"Key"`
+						DiscoverySource       string    `json:"DiscoverySource"`
+						Name                  string    `json:"Name"`
+						DeviceType            string    `json:"DeviceType"`
+						Active                bool      `json:"Active"`
+						Tags                  string    `json:"Tags"`
+						FirstSeen             time.Time `json:"FirstSeen"`
+						LastConnection        time.Time `json:"LastConnection"`
+						LastChanged           time.Time `json:"LastChanged"`
+						Master                string    `json:"Master"`
+						Location              string    `json:"Location"`
+						Owner                 string    `json:"Owner"`
+						Manufacturer          string    `json:"Manufacturer"`
+						ModelName             string    `json:"ModelName"`
+						Description           string    `json:"Description"`
+						SerialNumber          string    `json:"SerialNumber"`
+						ProductClass          string    `json:"ProductClass"`
+						HardwareVersion       string    `json:"HardwareVersion"`
+						SoftwareVersion       string    `json:"SoftwareVersion"`
+						BootLoaderVersion     string    `json:"BootLoaderVersion"`
+						FirewallLevel         string    `json:"FirewallLevel"`
+						LinkType              string    `json:"LinkType"`
+						LinkState             string    `json:"LinkState"`
+						ConnectionProtocol    string    `json:"ConnectionProtocol"`
+						ConnectionState       string    `json:"ConnectionState"`
+						LastConnectionError   string    `json:"LastConnectionError"`
+						ConnectionIPv4Address string    `json:"ConnectionIPv4Address"`
+						ConnectionIPv6Address string    `json:"ConnectionIPv6Address"`
+						RemoteGateway         string    `json:"RemoteGateway"`
+						DNSServers            string    `json:"DNSServers"`
+						Internet              bool      `json:"Internet"`
+						Iptv                  bool      `json:"IPTV"`
+						Telephony             bool      `json:"Telephony"`
+						DownstreamCurrRate    int       `json:"DownstreamCurrRate"`
+						UpstreamCurrRate      int       `json:"UpstreamCurrRate"`
+						DownstreamMaxBitRate  int       `json:"DownstreamMaxBitRate"`
+						UpstreamMaxBitRate    int       `json:"UpstreamMaxBitRate"`
+						Index                 string    `json:"Index"`
+						Alternative           []string  `json:"Alternative"`
+						Locations             []any     `json:"Locations"`
+						Groups                []any     `json:"Groups"`
+						Ssw                   struct {
+							Capabilities string `json:"Capabilities"`
+							CurrentMode  string `json:"CurrentMode"`
+						} `json:"SSW"`
+						Names []struct {
+							Name   string `json:"Name"`
+							Source string `json:"Source"`
+							Suffix string `json:"Suffix"`
+							ID     string `json:"Id"`
+						} `json:"Names"`
+						DeviceTypes []struct {
+							Type   string `json:"Type"`
+							Source string `json:"Source"`
+							ID     string `json:"Id"`
+						} `json:"DeviceTypes"`
+						Children []Child `json:"Children"`
 					} `json:"status"`
 				} `json:"result"`
 			}
@@ -363,9 +423,14 @@ func lsCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to unmarshal response: %w", err)
 			}
+			if len(data.Result.Status) == 0 {
+				return fmt.Errorf("response does not contain the result.status field")
+			}
+
+			devices := flatten(data.Result.Status[0].Children)
 
 			var rows [][]string
-			for _, device := range data.Result.Status.Devices {
+			for _, device := range devices {
 				rows = append(rows, []string{device.Name, device.IPAddress, device.PhysAddress})
 			}
 			t := table.New().
@@ -378,6 +443,74 @@ func lsCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func flatten(children []Child) []Child {
+	var devices []Child
+	for _, child := range children {
+		child := child
+		devices = append(devices, flatten(child.Children)...)
+		child.Children = nil
+		devices = append(devices, child)
+	}
+	return devices
+}
+
+type Child struct {
+	Key             string    `json:"Key"`
+	DiscoverySource string    `json:"DiscoverySource"`
+	Name            string    `json:"Name"`
+	DeviceType      string    `json:"DeviceType"`
+	Active          bool      `json:"Active"`
+	Tags            string    `json:"Tags"`
+	FirstSeen       time.Time `json:"FirstSeen"`
+	LastConnection  time.Time `json:"LastConnection"`
+	LastChanged     time.Time `json:"LastChanged"`
+	Master          string    `json:"Master"`
+	BusName         string    `json:"BusName,omitempty"`
+	Index           string    `json:"Index"`
+	Names           []struct {
+		Name   string `json:"Name"`
+		Source string `json:"Source"`
+		Suffix string `json:"Suffix"`
+		ID     string `json:"Id"`
+	} `json:"Names"`
+	DeviceTypes            []any   `json:"DeviceTypes"`
+	Children               []Child `json:"Children,omitempty"`
+	PortState              string  `json:"PortState,omitempty"`
+	PhysAddress            string  `json:"PhysAddress,omitempty"`
+	Layer2Interface        string  `json:"Layer2Interface,omitempty"`
+	InterfaceName          string  `json:"InterfaceName,omitempty"`
+	MACVendor              string  `json:"MACVendor,omitempty"`
+	NetDevName             string  `json:"NetDevName,omitempty"`
+	NetDevIndex            int     `json:"NetDevIndex,omitempty"`
+	IPAddress              string  `json:"IPAddress,omitempty"`
+	IPAddressSource        string  `json:"IPAddressSource,omitempty"`
+	DHCPv4ServerPool       string  `json:"DHCPv4ServerPool,omitempty"`
+	DHCPv4ServerEnable     bool    `json:"DHCPv4ServerEnable,omitempty"`
+	DHCPv4ServerMinAddress string  `json:"DHCPv4ServerMinAddress,omitempty"`
+	DHCPv4ServerMaxAddress string  `json:"DHCPv4ServerMaxAddress,omitempty"`
+	DHCPv4ServerNetmask    string  `json:"DHCPv4ServerNetmask,omitempty"`
+	DHCPv4DomainName       string  `json:"DHCPv4DomainName,omitempty"`
+	IPv4Address            []struct {
+		Address       string `json:"Address"`
+		Status        string `json:"Status"`
+		Scope         string `json:"Scope"`
+		AddressSource string `json:"AddressSource"`
+		Reserved      bool   `json:"Reserved"`
+		ID            string `json:"Id"`
+	} `json:"IPv4Address,omitempty"`
+	IPv6Address []struct {
+		Address       string `json:"Address"`
+		Status        string `json:"Status"`
+		Scope         string `json:"Scope"`
+		AddressSource string `json:"AddressSource"`
+		ID            string `json:"Id"`
+	} `json:"IPv6Address,omitempty"`
+	Location  string `json:"Location,omitempty"`
+	Owner     string `json:"Owner,omitempty"`
+	Locations []any  `json:"Locations,omitempty"`
+	Groups    []any  `json:"Groups,omitempty"`
 }
 
 type Device struct {
@@ -849,7 +982,20 @@ func portForwardSetCmd() *cobra.Command {
 			}
 
 			response, err := executeRequest(address, contextID, cookie, "Firewall", "setPortForwarding", params)
-			if err != nil {
+			var sErr APIErrors
+			switch {
+			case errors.As(err, &sErr):
+				// Check if the rule is overlapping another rule. The error is:
+				//  {"error": 1114120,"description": "Overlapping rule","info": "Port overlap detected: port[41642-41642] name[webui_tailscale2]"}
+				e, ok := sErr.GetCode(1114120)
+				if ok {
+					return fmt.Errorf(undent.Undent(`
+						%s
+						You can remove the overlapping rule using:
+						  livebox port-forward rm (<name>|<id>)
+					`), e.Info)
+				}
+			case err != nil:
 				return err
 			}
 
@@ -872,20 +1018,6 @@ func portForwardSetCmd() *cobra.Command {
 			err = json.Unmarshal([]byte(response), &data)
 			if err != nil {
 				return fmt.Errorf("failed to unmarshal response: %w", err)
-			}
-
-			// Check if the rule is overlapping another rule. The error is:
-			//  {
-			//      "error": 1114120,
-			//      "description": "Overlapping rule",
-			//      "info": "Port overlap detected: port[41642-41642] name[webui_tailscale2]"
-			//  }
-			var sErr APIErrors
-			if errors.As(err, &sErr) {
-				e, ok := sErr.GetCode(196640)
-				if ok {
-					return fmt.Errorf("%s.", e.Info)
-				}
 			}
 
 			if data.Result.Data.Rule.Status != "Enabled" {
@@ -916,11 +1048,24 @@ func portForwardRmCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "rm",
 		Short: "Remove a port forwarding rule",
+		Args:  cobra.ExactArgs(1),
+		Long: undent.Undent(`
+			Remove a port forwarding rule. The argument is the name of the rule
+			as seen in the UI. You can also pass the ID of the rule, which would
+			be the name prefixed by "webui_".
+
+			Usage:
+			  livebox port-forward rm (<name>|<id>)
+
+			Example:
+			  livebox port-forward rm pi443
+			  livebox port-forward rm webui_pi443
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return fmt.Errorf("expected a single argument: the name of the rule to remove")
 			}
-			name := args[0]
+			id := args[0]
 
 			config, err := loadConfig()
 			if err != nil {
@@ -932,15 +1077,42 @@ func portForwardRmCmd() *cobra.Command {
 				return err
 			}
 
-			params := map[string]interface{}{
-				"id": name,
-			}
-			response, err := executeRequest(address, contextID, cookie, "Firewall", "deletePortForwarding", params)
-			if err != nil {
-				return err
+			// If the ID doesn't start with "webui_", we add it.
+			if !strings.HasPrefix(id, "webui_") {
+				id = "webui_" + id
 			}
 
-			fmt.Println(response)
+			params := map[string]interface{}{
+				"id":     id,
+				"origin": "webui",
+			}
+			response, err := executeRequest(address, contextID, cookie, "Firewall", "deletePortForwarding", params)
+			var aErr APIErrors
+			switch {
+			case errors.As(err, &aErr):
+				// Let's give a nice message when the rule doesn't exist. For
+				// context, the error looks like this:
+				//  1114115: Object not found: webui_tailscale2
+				e, ok := aErr.GetCode(1114115)
+				if ok {
+					return fmt.Errorf("rule not found: %s", e.Info)
+				}
+			case err != nil:
+				return fmt.Errorf("failed to remove rule: %w", err)
+			}
+
+			var data struct {
+				Result struct {
+					Status bool `json:"status"`
+				} `json:"result"`
+			}
+			err = json.Unmarshal([]byte(response), &data)
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal response: %w", err)
+			}
+			if !data.Result.Status {
+				return fmt.Errorf("failed to remove rule, body: %s", response)
+			}
 			return nil
 		},
 	}
@@ -1108,7 +1280,7 @@ func staticLeaseSetCmd() *cobra.Command {
 			var apiErrs APIErrors
 			if errors.As(err, &apiErrs) {
 				for _, apiErr := range apiErrs {
-					if apiErr.Error == 393221 {
+					if apiErr.ErrorCode == 393221 {
 						return fmt.Errorf("IP address already reserved")
 					}
 				}
