@@ -75,8 +75,19 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:           "livebox",
 		Short:         "A CLI for interacting with a Livebox 4 or 5 (Orange)",
+
+		// SilenceUsage prevents Cobra from displaying the command's and
+		// subcommands' usage on errors. Most of the errors have nothing to do
+		// with the usage of the flags, and it is more confusing than helpful.
+		// In case of an issue the flags, the user will still see an helpful
+		// error message, and they can use --help to get the usage information.
+		// See: https://github.com/spf13/cobra/issues/340#issuecomment-243790200
+		SilenceUsage: true,
+
+		// SilenceErrors prevents Cobra from logging the error returned from the
+		// subcommands' RunE functions since we want to log the error ourselves
+		// once Execute returns.
 		SilenceErrors: true,
-		SilenceUsage:  true,
 	}
 
 	rootCmd.PersistentFlags().StringVar(&liveboxAddress, "address", "", "IP or hostname of the livebox")
