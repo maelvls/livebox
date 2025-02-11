@@ -1,11 +1,25 @@
-# livebox CLI for livebox v4
+# livebox CLI for the Livebox 4 and 5
 
-<img alt="livebox-speed-command" src="https://user-images.githubusercontent.com/2195781/114412685-9d8f6500-9bad-11eb-8911-0a571c0b578a.png" width="500">
+My internet service provider is Orange. When you sign up for a plan with them, they provide a modem/router called the ‘Livebox.’ I’ve used two versions of it: Livebox 4 and Livebox 5. I had the Livebox 4 when I was limited to DSL, but once I became eligible for fiber in 2025, I was upgraded to the Livebox 5.
 
-`livebox` is a CLI I wrote to quickly reboot my Livebox 4 as well as to see the
-modem's bandwidth. It also works with Livebox 5 models. The Livebox is an
-all-in-one internet router that the French ISP Orange is renting to their
-customers.
+<!-- Table without border just to align the two images. Center text. -->
+
+<table align="center" border="0">
+  <tr>
+    <td align="center">
+      <img alt="livebox-v4-fs8" src="https://github.com/user-attachments/assets/12b3b3eb-a9be-45b6-868e-a12b414a041c" width="500">
+        Livebox 4
+    </td>
+    <td align="center">
+      <img alt="livebox-v5-fs8" src="https://github.com/user-attachments/assets/bf8bf5e2-b7e4-4cd8-9097-15c6fc440eb3" width="500">
+      Livebox 5
+      </td>
+    </tr>
+</table>
+
+I developed the `livebox` CLI to quickly reboot the Livebox and monitor its bandwidth. The CLI is compatible with both Livebox 4 and Livebox 5 models.
+
+## Getting started
 
 ```sh
 go install github.com/maelvls/livebox@latest
@@ -17,13 +31,14 @@ To get started:
 livebox login
 ```
 
-To list the devices on your network:
+You can now list the devices on your network to find out their IP and MAC
+addresses:
 
 ```sh
 livebox ls
 ```
 
-To reboot the Livebox:
+You can reboot the Livebox from the command line:
 
 ```sh
 livebox reboot
@@ -35,11 +50,15 @@ You can do raw API calls too:
 livebox api <<<'{"service":"NeMo.Intf.lan","method":"getMIBs","parameters":{"mibs":"base wlanradio"}}'
 ```
 
-Show your DSL speed (doesn't work for fiber connections, only DSL):
+You can display the DSL bandwidth (doesn't work for fiber connections, only DSL):
 
 ```sh
 livebox speed
 ```
+
+I had a very poor DSL connection back in the day:
+
+![the speed command](https://user-images.githubusercontent.com/2195781/114412685-9d8f6500-9bad-11eb-8911-0a571c0b578a.png)
 
 ## Wi-fi
 
