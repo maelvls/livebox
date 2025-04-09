@@ -73,8 +73,8 @@ func saveConfig(config Config) error {
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:           "livebox",
-		Short:         "A CLI for interacting with a Livebox 4 or 5 (Orange)",
+		Use:   "livebox",
+		Short: "A CLI for interacting with a Livebox 4 or 5 (Orange)",
 
 		// SilenceUsage prevents Cobra from displaying the command's and
 		// subcommands' usage on errors. Most of the errors have nothing to do
@@ -117,10 +117,10 @@ func main() {
 
 func authenticate(address, username, password string) (contextID string, sessid *http.Cookie, _ error) {
 	authURL := fmt.Sprintf("http://%s/ws", address)
-	payloadBytes, err := json.Marshal(map[string]interface{}{
+	payloadBytes, err := json.Marshal(map[string]any{
 		"service": "sah.Device.Information",
 		"method":  "createContext",
-		"parameters": map[string]interface{}{
+		"parameters": map[string]any{
 			"applicationName": "webui",
 			"username":        username,
 			"password":        password,
@@ -180,10 +180,10 @@ func authenticate(address, username, password string) (contextID string, sessid 
 //
 //	var apiErrs APIErrors
 //	errors.As(err, &apiErrs)
-func executeRequest(address, contextID string, cookie *http.Cookie, service, method string, parameters map[string]interface{}) (string, error) {
+func executeRequest(address, contextID string, cookie *http.Cookie, service, method string, parameters map[string]any) (string, error) {
 	requestURL := fmt.Sprintf("http://%s/ws", address)
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"service":    service,
 		"method":     method,
 		"parameters": parameters,
@@ -224,8 +224,8 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 	//  {"result":{"status":null,"errors":[{"error":196640,"description":"Missing mandatory argument","info":"origin"},{"error":196640,"description":"Missing mandatory argument","info":"sourceInterface"},{"error":196640,"description":"Missing mandatory argument","info":"internalPort"},{"error":196640,"description":"Missing mandatory argument","info":"destinationIPAddress"},{"error":196640,"description":"Missing mandatory argument","info":"protocol"}]}}
 	var result struct {
 		Result struct {
-			Status interface{} `json:"status"`
-			Errors APIErrors   `json:"errors"`
+			Status any       `json:"status"`
+			Errors APIErrors `json:"errors"`
 		} `json:"result"`
 	}
 	err = json.Unmarshal([]byte(bodyBytes), &result)
@@ -358,7 +358,7 @@ func lsCmd() *cobra.Command {
 				return err
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "TopologyDiagnostics", "buildTopology", map[string]interface{}{"SendXmlFile": false})
+			response, err := executeRequest(address, contextID, cookie, "TopologyDiagnostics", "buildTopology", map[string]any{"SendXmlFile": false})
 			if err != nil {
 				return err
 			}
@@ -668,7 +668,7 @@ func rebootCmd() *cobra.Command {
 				return err
 			}
 
-			_, err = executeRequest(address, contextID, cookie, "NMC", "reboot", map[string]interface{}{"reason": "GUI_Reboot"})
+			_, err = executeRequest(address, contextID, cookie, "NMC", "reboot", map[string]any{"reason": "GUI_Reboot"})
 			if err != nil {
 				return err
 			}
@@ -695,7 +695,7 @@ func phoneCmd() *cobra.Command {
 				return err
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "VoiceService.VoiceApplication", "getCallList", map[string]interface{}{"line": "1"})
+			response, err := executeRequest(address, contextID, cookie, "VoiceService.VoiceApplication", "getCallList", map[string]any{"line": "1"})
 			if err != nil {
 				return err
 			}
@@ -722,7 +722,7 @@ func speedCmd() *cobra.Command {
 				return err
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "NeMo.Intf.data", "getMIBs", map[string]interface{}{
+			response, err := executeRequest(address, contextID, cookie, "NeMo.Intf.data", "getMIBs", map[string]any{
 				"mibs": "dsl",
 			})
 			if err != nil {
@@ -798,7 +798,7 @@ func pinholeLsCmd() *cobra.Command {
 				return err
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "Firewall", "getPinhole", map[string]interface{}{})
+			response, err := executeRequest(address, contextID, cookie, "Firewall", "getPinhole", map[string]any{})
 			if err != nil {
 				return err
 			}
@@ -887,10 +887,10 @@ func pinholeSetCmd() *cobra.Command {
 				protocol = "17" // UDP
 			}
 
-			payload := map[string]interface{}{
+			payload := map[string]any{
 				"service": "Firewall",
 				"method":  "setPortForwarding",
-				"parameters": map[string]interface{}{
+				"parameters": map[string]any{
 					"id":                    name,
 					"origin":                "webui",
 					"sourceInterface":       "data",
@@ -912,7 +912,7 @@ func pinholeSetCmd() *cobra.Command {
 			}
 			fmt.Println(response)
 
-			_, err = executeRequest(address, contextID, cookie, "Firewall", "commit", map[string]interface{}{})
+			_, err = executeRequest(address, contextID, cookie, "Firewall", "commit", map[string]any{})
 			if err != nil {
 				return err
 			}
@@ -954,7 +954,7 @@ func pinholeRmCmd() *cobra.Command {
 			}
 			name := args[0]
 
-			payload := map[string]interface{}{
+			payload := map[string]any{
 				"id": name,
 			}
 
@@ -1016,7 +1016,7 @@ func portForwardLsCmd() *cobra.Command {
 				return err
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "Firewall", "getPortForwarding", map[string]interface{}{})
+			response, err := executeRequest(address, contextID, cookie, "Firewall", "getPortForwarding", map[string]any{})
 			if err != nil {
 				return err
 			}
@@ -1097,7 +1097,7 @@ func portForwardSetCmd() *cobra.Command {
 				protocol = "17" // UDP
 			}
 
-			params := map[string]interface{}{
+			params := map[string]any{
 				"id":                    "webui_" + name,
 				"description":           name,
 				"sourcePort":            "",
@@ -1215,7 +1215,7 @@ func portForwardRmCmd() *cobra.Command {
 				id = "webui_" + id
 			}
 
-			params := map[string]interface{}{
+			params := map[string]any{
 				"id":     id,
 				"origin": "webui",
 			}
@@ -1348,7 +1348,7 @@ func staticLeaseRmCmd() *cobra.Command {
 				return fmt.Errorf("no lease found for MAC %s", mac)
 			}
 
-			params := map[string]interface{}{
+			params := map[string]any{
 				"LeasePath": leasePath,
 			}
 
@@ -1400,7 +1400,7 @@ func staticLeaseSetCmd() *cobra.Command {
 				}
 			}
 
-			params := map[string]interface{}{
+			params := map[string]any{
 				"MACAddress": mac,
 				"IPAddress":  ip,
 			}
@@ -1499,7 +1499,7 @@ type StaticLease struct {
 }
 
 func getStaticLeases(address, contextID string, cookie *http.Cookie) ([]StaticLease, error) {
-	params := map[string]interface{}{
+	params := map[string]any{
 		"default": "",
 	}
 	response, err := executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "getStaticLeases", params)
@@ -1581,7 +1581,7 @@ var (
 //
 //	errors.Is(err, ErrNoDMZ)
 func getDMZ(address, contextID string, cookie *http.Cookie) (ip string, _ error) {
-	response, err := executeRequest(address, contextID, cookie, "Firewall", "getDMZ", map[string]interface{}{})
+	response, err := executeRequest(address, contextID, cookie, "Firewall", "getDMZ", map[string]any{})
 	if err != nil {
 		return "", err
 	}
@@ -1611,7 +1611,7 @@ func getDMZ(address, contextID string, cookie *http.Cookie) (ip string, _ error)
 }
 
 func setDMZ(address, contextID string, cookie *http.Cookie, ip string) error {
-	resp, err := executeRequest(address, contextID, cookie, "Firewall", "setDMZ", map[string]interface{}{
+	resp, err := executeRequest(address, contextID, cookie, "Firewall", "setDMZ", map[string]any{
 		"id":                   "webui",
 		"sourceInterface":      "data",
 		"destinationIPAddress": ip,
@@ -1649,7 +1649,7 @@ func deleteDMZ(address, contextID string, cookie *http.Cookie) error {
 
 	fmt.Printf("Removing DMZ for IP %s\n", ip)
 
-	resp, err := executeRequest(address, contextID, cookie, "Firewall", "deleteDMZ", map[string]interface{}{
+	resp, err := executeRequest(address, contextID, cookie, "Firewall", "deleteDMZ", map[string]any{
 		"id": "webui",
 	})
 	if err != nil {
@@ -1828,28 +1828,28 @@ func wifiCmd() *cobra.Command {
 					ghz5 = true
 				}
 
-				wlanvap := make(map[string]interface{})
+				wlanvap := make(map[string]any)
 				if ghz24 {
-					wlanvap["wl0"] = map[string]interface{}{
+					wlanvap["wl0"] = map[string]any{
 						"SSID":                     ssid,
 						"SSIDAdvertisementEnabled": true,
-						"Security":                 map[string]interface{}{"ModeEnabled": securityMode, "KeyPassPhrase": pass},
-						"MACFiltering":             map[string]interface{}{"Mode": "Off"},
-						"WPS":                      map[string]interface{}{"Enable": false},
+						"Security":                 map[string]any{"ModeEnabled": securityMode, "KeyPassPhrase": pass},
+						"MACFiltering":             map[string]any{"Mode": "Off"},
+						"WPS":                      map[string]any{"Enable": false},
 					}
 				}
 				if ghz5 {
-					wlanvap["eth4"] = map[string]interface{}{
+					wlanvap["eth4"] = map[string]any{
 						"SSID":                     ssid,
 						"SSIDAdvertisementEnabled": true,
-						"Security":                 map[string]interface{}{"ModeEnabled": securityMode, "KeyPassPhrase": pass},
-						"MACFiltering":             map[string]interface{}{"Mode": "Off"},
-						"WPS":                      map[string]interface{}{"Enable": false},
+						"Security":                 map[string]any{"ModeEnabled": securityMode, "KeyPassPhrase": pass},
+						"MACFiltering":             map[string]any{"Mode": "Off"},
+						"WPS":                      map[string]any{"Enable": false},
 					}
 				}
 
-				params := map[string]interface{}{
-					"mibs": map[string]interface{}{"wlanvap": wlanvap},
+				params := map[string]any{
+					"mibs": map[string]any{"wlanvap": wlanvap},
 				}
 				_, err = executeRequest(address, contextID, cookie, "NeMo.Intf.lan", "setWLANConfig", params)
 				if err != nil {
@@ -1903,24 +1903,24 @@ func enableDisableWLANCmd(ghz5, ghz24 *bool, action string) func(cmd *cobra.Comm
 			enable = true
 		}
 
-		penable := make(map[string]interface{})
+		penable := make(map[string]any)
 		if *ghz5 {
-			penable["eth4"] = map[string]interface{}{
+			penable["eth4"] = map[string]any{
 				"Enable":           enable,
 				"PersistentEnable": true,
 				"Status":           true,
 			}
 		}
 		if *ghz24 {
-			penable["wl0"] = map[string]interface{}{
+			penable["wl0"] = map[string]any{
 				"Enable":           enable,
 				"PersistentEnable": true,
 				"Status":           true,
 			}
 		}
 
-		params := map[string]interface{}{
-			"mibs": map[string]interface{}{
+		params := map[string]any{
+			"mibs": map[string]any{
 				"penable": penable,
 			},
 		}
