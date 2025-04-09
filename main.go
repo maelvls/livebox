@@ -107,6 +107,7 @@ func main() {
 		staticLeaseCmd(),
 		dmzCmd(),
 		wifiCmd(),
+		dnsCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -1367,7 +1368,13 @@ func staticLeaseSetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set",
 		Short: "Set an static lease",
-		Args:  cobra.ExactArgs(2),
+		Long: undent.Undent(`
+			Set a static lease.
+
+			Example:
+			  livebox dns set D8:10:68:8A:E9:C4 my-custom-name
+		`),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
 			if err != nil {
@@ -1393,7 +1400,8 @@ func staticLeaseSetCmd() *cobra.Command {
 					return nil
 				}
 				if lease.IPAddress == ip {
-					return fmt.Errorf("IP address already reserved with MAC %s", lease.MACAddress)
+					fmt.Printf("The IP address %s already reserved for the MAC %s, doing nothing\n", ip, lease.MACAddress)
+					return nil
 				}
 				if lease.MACAddress == mac {
 					return fmt.Errorf("MAC address already reserved for the IP %s", lease.IPAddress)
@@ -1932,4 +1940,61 @@ func enableDisableWLANCmd(ghz5, ghz24 *bool, action string) func(cmd *cobra.Comm
 
 		return nil
 	}
+}
+
+func dnsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "dns",
+		Short: "Set the name of a device",
+		Long: undent.Undent(`
+			Set the name of a device.
+
+			Example:
+			  livebox dns set D8:10:68:8A:F0:D2 foobar
+		`),
+	}
+	cmd.AddCommand(dnsSetCmd())
+	return cmd
+}
+
+func dnsSetCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set",
+		Short: "Set the name of a device",
+		Long: undent.Undent(`
+			Set the name of a device.
+
+			Example:
+			  livebox dns set D8:10:68:8A:F0:D2 foobar
+		`),
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			mac := args[0]
+			name := args[1]
+
+			// Example:
+			// {"service":"Devices.Device.D8:10:68:8A:F0:D2","method":"setName","parameters":{"name":"my-custom-name","source":"dns"}}
+			_, err = executeRequest(address, contextID, cookie, "Devices.Device."+mac, "setName", map[string]any{
+				"name":   name,
+				"source": "dns",
+			})
+			if err != nil {
+				return fmt.Errorf("failed to set name: %w", err)
+			}
+
+			return nil
+		},
+	}
+	return cmd
 }
