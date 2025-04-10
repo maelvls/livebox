@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -310,11 +311,16 @@ func getDevices(address, contextID string, cookie *http.Cookie) ([]Dev, error) {
 
 func extractNames(names []name) []string {
 	var result []string
+	fmt.Println("Names:", names)
 	for _, name := range names {
 		if name.Name == "Device" {
 			continue
 		}
 		result = append(result, name.Name)
 	}
+
+	// For some reason, the names are not unique. Let's remove duplicates.
+	result = slices.Compact(result)
+
 	return result
 }

@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -2017,6 +2019,18 @@ func dnsLsCmd() *cobra.Command {
 				return fmt.Errorf("failed to get devices: %w", err)
 			}
 
+			// Let's sort the devices by IPv4 address.
+			slices.SortFunc(devices, func(a, b Dev) int {
+				aAddr, _ := netip.ParseAddr(a.IPv4)
+				bAddr, _ := netip.ParseAddr(b.IPv4)
+				return aAddr.Compare(bAddr)
+			})
+
+			// Let's remove devices that don't have an IP.
+			devices = slices.DeleteFunc(devices, func(dev Dev) bool {
+				return dev.IPv4 == "" && dev.IPv6 == ""
+			})
+
 			var rows [][]string
 			for _, dev := range devices {
 				rows = append(rows, []string{
@@ -2027,7 +2041,7 @@ func dnsLsCmd() *cobra.Command {
 			}
 			t := table.New().
 				Border(lipgloss.NormalBorder()).
-				Headers("IP address", "MAC address", "Name").
+				Headers("IP address", "MAC address", "DNS Names").
 				Rows(rows...)
 
 			fmt.Println(t.String())
