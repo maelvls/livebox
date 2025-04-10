@@ -888,30 +888,25 @@ func pinholeSetCmd() *cobra.Command {
 				protocol = "17" // UDP
 			}
 
-			payload := map[string]any{
-				"service": "Firewall",
-				"method":  "setPortForwarding",
-				"parameters": map[string]any{
-					"id":                    name,
-					"origin":                "webui",
-					"sourceInterface":       "data",
-					"sourcePort":            "",
-					"destinationPort":       toPort,
-					"destinationIPAddress":  toIP,
-					"destinationMACAddress": toMAC,
-					"sourcePrefix":          "",
-					"protocol":              protocol,
-					"ipversion":             6,
-					"enable":                true,
-					"persistent":            true, // IPv6 only.
-				},
+			params := map[string]any{
+				"id":                    name,
+				"origin":                "webui",
+				"sourceInterface":       "data",
+				"sourcePort":            "",
+				"destinationPort":       toPort,
+				"destinationIPAddress":  toIP,
+				"destinationMACAddress": toMAC,
+				"sourcePrefix":          "",
+				"protocol":              protocol,
+				"ipversion":             6,
+				"enable":                true,
+				"persistent":            true, // IPv6 only.
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "Firewall", "setPortForwarding", payload)
+			_, err = executeRequest(address, contextID, cookie, "Firewall", "setPinhole", params)
 			if err != nil {
 				return err
 			}
-			fmt.Println(response)
 
 			_, err = executeRequest(address, contextID, cookie, "Firewall", "commit", map[string]any{})
 			if err != nil {
@@ -1086,8 +1081,6 @@ func portForwardSetCmd() *cobra.Command {
 				return err
 			}
 
-			// Parse the flags.
-			// Parse the flags.
 			if len(args) != 1 {
 				return fmt.Errorf("expected a single argument: the name of the rule")
 			}
