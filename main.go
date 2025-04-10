@@ -864,7 +864,7 @@ func pinholeSetCmd() *cobra.Command {
 	var toPort, toIP, toMAC string
 	var useUDP bool
 	cmd := &cobra.Command{
-		Use:   "set-pinhole",
+		Use:   "set",
 		Short: "Set a firewall rule for IPv4",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
@@ -1400,8 +1400,7 @@ func staticLeaseSetCmd() *cobra.Command {
 					return nil
 				}
 				if lease.IPAddress == ip {
-					fmt.Printf("The IP address %s already reserved for the MAC %s, doing nothing\n", ip, lease.MACAddress)
-					return nil
+					return fmt.Errorf("IP address %s already has a lease for the MAC %s", ip, lease.MACAddress)
 				}
 				if lease.MACAddress == mac {
 					return fmt.Errorf("MAC address already reserved for the IP %s", lease.IPAddress)
@@ -1413,7 +1412,7 @@ func staticLeaseSetCmd() *cobra.Command {
 				"IPAddress":  ip,
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "addStaticLease", params)
+			_, err = executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "addStaticLease", params)
 			// Example of error response:
 			//  * 0: Success: MACAddress
 			//  * 393221: IP address already reserved:
@@ -1430,7 +1429,6 @@ func staticLeaseSetCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Println(response)
 			return nil
 		},
 	}
