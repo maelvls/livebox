@@ -1953,7 +1953,7 @@ func dnsCmd() *cobra.Command {
 			  livebox dns set D8:10:68:8A:F0:D2 foobar
 		`),
 	}
-	cmd.AddCommand(dnsSetCmd())
+	cmd.AddCommand(dnsSetCmd(), dnsLsCmd())
 	return cmd
 }
 
@@ -1992,6 +1992,54 @@ func dnsSetCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to set name: %w", err)
 			}
+
+			return nil
+		},
+	}
+	return cmd
+}
+
+func dnsLsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ls",
+		Short: "List all devices",
+		Long: undent.Undent(`
+			List all devices.
+
+			Example:
+			  livebox dns ls
+		`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			address, username, password := mergeFlagsWithConfig(config)
+
+			contextID, cookie, err := authenticate(address, username, password)
+			if err != nil {
+				return err
+			}
+
+			devices, err := getDevices(address, contextID, cookie)
+			if err != nil {
+				return fmt.Errorf("failed to get devices: %w", err)
+			}
+
+			var rows [][]string
+			for _, dev := range devices {
+				rows = append(rows, []string{
+					dev.IPv4,
+					dev.MacAddress,
+					strings.Join(dev.Names, ", "),
+				})
+			}
+			t := table.New().
+				Border(lipgloss.NormalBorder()).
+				Headers("IP address", "MAC address", "Name").
+				Rows(rows...)
+
+			fmt.Println(t.String())
 
 			return nil
 		},
