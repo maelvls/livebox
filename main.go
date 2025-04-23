@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -1390,7 +1391,7 @@ func staticLeaseSetCmd() *cobra.Command {
 			}
 
 			for _, lease := range leases {
-				if lease.MACAddress == mac && lease.IPAddress == ip {
+				if macAddrEqual(lease.MACAddress, mac) && lease.IPAddress == ip {
 					fmt.Println("Lease already present, nothing to do")
 					return nil
 				}
@@ -1429,6 +1430,12 @@ func staticLeaseSetCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+func macAddrEqual(mac1, mac2 string) bool {
+	mac1Addr, _ := net.ParseMAC(mac1)
+	mac2Addr, _ := net.ParseMAC(mac2)
+	return mac1Addr.String() == mac2Addr.String()
 }
 
 func dmzGetCmd() *cobra.Command {
