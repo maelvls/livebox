@@ -21,6 +21,8 @@ I developed the `livebox` CLI to quickly reboot the Livebox and monitor its band
 
 ## Getting started
 
+You will need Go version 1.21 or later to build the CLI.
+
 ```sh
 go install github.com/maelvls/livebox@latest
 ```

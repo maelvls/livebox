@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/fang"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -113,7 +115,8 @@ func main() {
 		dnsCmd(),
 	)
 
-	if err := rootCmd.Execute(); err != nil {
+	err := fang.Execute(context.Background(), rootCmd)
+	if err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
@@ -770,10 +773,10 @@ func pinholeCmd() *cobra.Command {
 		Short: "Manage pinhole rules",
 		Long: undent.Undent(`
 			Manage IPv6 pinhole rules.
-
-			Examples:
-			  livebox pinhole ls
-			  livebox pinhole set mypinhole --to-port 443 --to-ip
+		`),
+		Example: undent.Undent(`
+			pinhole ls
+			pinhole set mypinhole --to-port 443 --to-ip
 		`),
 	}
 
@@ -974,11 +977,11 @@ func portForwardCmd() *cobra.Command {
 		Short: "Manage forwarding rules",
 		Long: undent.Undent(`
 			Manage IPv4 port forwarding rules.
-
-			Examples:
-			  livebox port-forward ls
-			  livebox port-forward set [--udp] pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
-			  livebox port-forward rm pi443
+		`),
+		Example: undent.Undent(`
+			port-forward ls
+			port-forward set [--udp] pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
+			port-forward rm pi443
 		`),
 	}
 
@@ -996,12 +999,10 @@ func portForwardLsCmd() *cobra.Command {
 		Use:   "ls",
 		Short: "List all port forwarding rules",
 		Long: undent.Undent(`
-			List all port forwarding rules. By default, it sets a TCP rule. To set
-			a UDP rule, use the --udp flag.
-
-			Example:
-
-			  livebox port-forward set [--udp] pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
+			List all port forwarding rules. By default, it sets a TCP rule. To set a UDP rule, use the --udp flag.
+		`),
+		Example: undent.Undent(`
+			port-forward set [--udp] pi443 --from-port 443 --to-port 443 --to-ip 192.168.1.160 --to-mac E4:5F:01:A6:65:FE
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
@@ -1180,16 +1181,12 @@ func portForwardRmCmd() *cobra.Command {
 		Short: "Remove a port forwarding rule",
 		Args:  cobra.ExactArgs(1),
 		Long: undent.Undent(`
-			Remove a port forwarding rule. The argument is the name of the rule
-			as seen in the UI. You can also pass the ID of the rule, which would
-			be the name prefixed by "webui_".
-
-			Usage:
-			  livebox port-forward rm (<name>|<id>)
-
-			Example:
-			  livebox port-forward rm pi443
-			  livebox port-forward rm webui_pi443
+			Remove a port forwarding rule. The argument is the name of the rule as seen in the UI. You can also pass the ID of the rule, which would be the name prefixed by "webui_".
+		`),
+		Example: undent.Undent(`
+			port-forward rm (<name>|<id>)
+			port-forward rm pi443
+			port-forward rm webui_pi443
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
@@ -1254,11 +1251,11 @@ func staticLeaseCmd() *cobra.Command {
 		Short: "Manage static leases",
 		Long: undent.Undent(`
 			Manage static leases.
-
-			Examples:
-			  livebox static-lease ls
-			  livebox static-lease set 00:11:22:33:44:55 192.168.1.160
-			  livebox static-lease rm 00:11:22:33:44:55
+		`),
+		Example: undent.Undent(`
+			static-lease ls
+			static-lease set 00:11:22:33:44:55 192.168.1.160
+			static-lease rm 00:11:22:33:44:55
 		`),
 	}
 
@@ -1366,9 +1363,9 @@ func staticLeaseSetCmd() *cobra.Command {
 		Short: "Set an static lease",
 		Long: undent.Undent(`
 			Set a static lease.
-
-			Example:
-			  livebox dns set D8:10:68:8A:E9:C4 my-custom-name
+		`),
+		Example: undent.Undent(`
+			dns set D8:10:68:8A:E9:C4 my-custom-name
 		`),
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1534,11 +1531,11 @@ func dmzCmd() *cobra.Command {
 		Short: "Manage DMZ",
 		Long: undent.Undent(`
 			Manage DMZ.
-
-			Examples:
-			  livebox dmz get
-			  livebox dmz set
-			  livebox dmz rm
+		`),
+		Example: undent.Undent(`
+			dmz get
+			dmz set <ip>
+			dmz rm
 		`),
 	}
 
@@ -1557,7 +1554,6 @@ func dmzRmCmd() *cobra.Command {
 		Short: "Remove the DMZ configuration.",
 		Long: undent.Undent(`
 			Remove the DMZ configuration.
-
 			There is only one DMZ configuration possible, so no need to specify an IP address.
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1752,33 +1748,17 @@ func wifiCmd() *cobra.Command {
 		Use:   "wifi",
 		Short: "Set the WLAN configuration",
 		Long: undent.Undent(`
-			Set the WLAN configuration. Without a pass, the security is set to
-			"None". With a pass, the security is set to "WP2-Personal".
-
-			To configure the SSID and pass code for the 2.4 GHz and 5 GHz
-			bands simultaneously:
-
-			  livebox wifi config --ssid "Wifi-Valais" --pass "foobar" --24ghz --5ghz
-
-			If you omit "--24ghz --5ghz", both bands will be configured
-			simultanously:
-
-			  livebox wifi config --ssid "Wifi-Valais" --pass "foobar"
-
-			If you want to configure different settings for each band:
-
-			  livebox wifi config --24ghz --ssid "Wifi-Valais" --pass "foobar"
-			  livebox wifi config --5ghz --ssid "Wifi-Valais_5GHz" --pass "foobar"
-
-			To turn off both and turn on both bands:
-
-			  livebox wifi disable
-			  livebox wifi enable
-
-			To turn on and off only one band:
-
-			  livebox wifi disable --24ghz
-			  livebox wifi enable --5ghz
+			Set the WLAN configuration. Without a pass, the security is set to "None". With a pass, the security is set to "WP2-Personal".
+		`),
+		Example: undent.Undent(`
+			wifi config --ssid "Wifi-Valais" --pass "foobar" --24ghz --5ghz
+			wifi config --ssid "Wifi-Valais" --pass "foobar"
+			wifi config --24ghz --ssid "Wifi-Valais" --pass "foobar"
+			wifi config --5ghz --ssid "Wifi-Valais_5GHz" --pass "foobar"
+			wifi disable
+			wifi enable
+			wifi disable --24ghz
+			wifi enable --5ghz
 		`),
 	}
 
@@ -1948,9 +1928,9 @@ func dnsCmd() *cobra.Command {
 		Short: "Set the name of a device",
 		Long: undent.Undent(`
 			Set the name of a device.
-
-			Example:
-			  livebox dns set D8:10:68:8A:F0:D2 foobar
+		`),
+		Example: undent.Undent(`
+			dns set D8:10:68:8A:F0:D2 foobar
 		`),
 	}
 	cmd.AddCommand(dnsSetCmd(), dnsLsCmd())
@@ -1963,9 +1943,9 @@ func dnsSetCmd() *cobra.Command {
 		Short: "Set the name of a device",
 		Long: undent.Undent(`
 			Set the name of a device.
-
-			Example:
-			  livebox dns set D8:10:68:8A:F0:D2 foobar
+		`),
+		Example: undent.Undent(`
+			dns set D8:10:68:8A:F0:D2 foobar
 		`),
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -2005,9 +1985,9 @@ func dnsLsCmd() *cobra.Command {
 		Short: "List all devices",
 		Long: undent.Undent(`
 			List all devices.
-
-			Example:
-			  livebox dns ls
+		`),
+		Example: undent.Undent(`
+			dns ls
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := loadConfig()
