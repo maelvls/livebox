@@ -1,4 +1,8 @@
-# livebox CLI for the Livebox 4 and 5
+# livebox CLI for the Livebox 4, 5, 6 and 7
+
+> [!NOTE]
+>
+> Although I haven't tested with an actual Livebox 6 or 7, you should be able to run the `livebox` CLI with them.
 
 My internet service provider is Orange. When you sign up for a plan with them, they provide a modem/router called the ‘Livebox.’ I’ve used two versions of it: Livebox 4 and Livebox 5. I had the Livebox 4 when I was limited to DSL, but once I became eligible for fiber in 2025, I was upgraded to the Livebox 5.
 
