@@ -68,6 +68,12 @@ func saveConfig(config Config) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
+	// Create the necessary directories if they don't exist.
+	err = os.MkdirAll(os.Getenv("HOME")+"/.config", 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
 	err = os.WriteFile(configPath, configFile, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
