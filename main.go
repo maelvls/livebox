@@ -128,6 +128,7 @@ func main() {
 	}
 }
 
+// Address is of the form `hostname[:port]` or `IP[:port]`.
 func authenticate(address, username, password string) (contextID string, sessid *http.Cookie, _ error) {
 	authURL := fmt.Sprintf("http://%s/ws", address)
 	payloadBytes, err := json.Marshal(map[string]any{
@@ -148,6 +149,7 @@ func authenticate(address, username, password string) (contextID string, sessid 
 		return "", nil, fmt.Errorf("failed to create auth request: %w", err)
 	}
 
+	setHostHeader(req)
 	req.Header.Set("Authorization", "X-Sah-Login")
 	req.Header.Set("Content-Type", "application/x-sah-ws-4-call+json")
 
@@ -211,6 +213,7 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
+	setHostHeader(req)
 	req.Header.Set("Authorization", "X-Sah "+contextID)
 	req.Header.Set("Content-Type", "application/x-sah-ws-1-call+json")
 	req.AddCookie(cookie)
@@ -232,9 +235,6 @@ func executeRequest(address, contextID string, cookie *http.Cookie, service, met
 		return "", fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	// Example error response:
-	// 	{"result":{"status":null,"errors":[{"error":13,"description":"Permission denied","info":"TopologyDiagnostics"}]}}
-	//  {"result":{"status":null,"errors":[{"error":196640,"description":"Missing mandatory argument","info":"origin"},{"error":196640,"description":"Missing mandatory argument","info":"sourceInterface"},{"error":196640,"description":"Missing mandatory argument","info":"internalPort"},{"error":196640,"description":"Missing mandatory argument","info":"destinationIPAddress"},{"error":196640,"description":"Missing mandatory argument","info":"protocol"}]}}
 	var result struct {
 		Result struct {
 			Status any       `json:"status"`
@@ -483,125 +483,6 @@ func flatten(children []Child) []Child {
 	return devices
 }
 
-// Example of a device:
-//
-//  {
-//  	"Key": "0A:7D:5C:93:78:5A",
-//  	"DiscoverySource": "import",
-//  	"Name": "MacBookPro-1",
-//  	"DeviceType": "Computer",
-//  	"Active": false,
-//  	"Tags": "lan edev mac physical flowstats ipv4 ipv6 dhcp ssw_sta events wifi",
-//  	"FirstSeen": "2025-01-16T02:02:04Z",
-//  	"LastConnection": "2025-02-05T07:02:11Z",
-//  	"LastChanged": "2025-02-05T07:03:10Z",
-//  	"Master": "",
-//  	"DeviceCategory": "",
-//  	"VendorClassID": "",
-//  	"UserClassID": "",
-//  	"ClientID": "01:0A:7D:5C:93:78:5A",
-//  	"SerialNumber": "",
-//  	"ProductClass": "",
-//  	"OUI": "",
-//  	"DHCPOption55": "[1,121,3,6,15,108,114,119,252,95,44,46]",
-//  	"IPAddress": "",
-//  	"IPAddressSource": "",
-//  	"Location": "",
-//  	"PhysAddress": "0A:7D:5C:93:78:5A",
-//  	"Layer2Interface": "wl0",
-//  	"InterfaceName": "wl0",
-//  	"MACVendor": "",
-//  	"Owner": "",
-//  	"UniqueID": "urn:uuid:8dd9b8ec-0b28-4570-9d98-ea1292e0cf91",
-//  	"SignalStrength": -75,
-//  	"SignalNoiseRatio": 16,
-//  	"LastDataDownlinkRate": 5500,
-//  	"LastDataUplinkRate": 5500,
-//  	"EncryptionMode": "Default",
-//  	"LinkBandwidth": "Unknown",
-//  	"SecurityModeEnabled": "None",
-//  	"HtCapabilities": "",
-//  	"VhtCapabilities": "",
-//  	"HeCapabilities": "",
-//  	"SupportedMCS": "",
-//  	"AuthenticationState": true,
-//  	"OperatingStandard": "n",
-//  	"OperatingFrequencyBand": "2.4GHz",
-//  	"AvgSignalStrengthByChain": -76,
-//  	"MaxBandwidthSupported": "20MHz",
-//  	"MaxDownlinkRateSupported": 0,
-//  	"MaxDownlinkRateReached": 117000,
-//  	"DownlinkMCS": 0,
-//  	"DownlinkBandwidth": 0,
-//  	"DownlinkShortGuard": false,
-//  	"UplinkMCS": 0,
-//  	"UplinkBandwidth": 0,
-//  	"UplinkShortGuard": false,
-//  	"MaxUplinkRateSupported": 0,
-//  	"MaxUplinkRateReached": 11000,
-//  	"MaxTxSpatialStreamsSupported": 0,
-//  	"MaxRxSpatialStreamsSupported": 0,
-//  	"Index": "44",
-//  	"Names": [
-//  		{
-//  		"Name": "Device",
-//  		"Source": "default",
-//  		"Suffix": "44",
-//  		"Id": "default"
-//  		},
-//  		{
-//  		"Name": "MacBookPro",
-//  		"Source": "dhcp",
-//  		"Suffix": "1",
-//  		"Id": "dhcp"
-//  		}
-//  	],
-//  	"DeviceTypes": [
-//  		{
-//  		"Type": "Computer",
-//  		"Source": "default",
-//  		"Id": "default"
-//  		}
-//  	],
-//  	"BDD": {
-//  		"CloudVersion": "",
-//  		"BDDRequestsSent": 0,
-//  		"BDDRequestsAnswered": 0,
-//  		"BDDRequestsFailed": 0,
-//  		"DeviceName": "",
-//  		"DeviceType": "",
-//  		"ModelName": "",
-//  		"OperatingSystem": "",
-//  		"SoftwareVersion": "",
-//  		"Manufacturer": "",
-//  		"MACVendor": "",
-//  		"DeviceCategory": ""
-//  	},
-//  	"IPv4Address": [],
-//  	"IPv6Address": [],
-//  	"Locations": [],
-//  	"Groups": [],
-//  	"Priority": {
-//  		"Configuration": "All",
-//  		"Type": "BestEffort"
-//  	},
-//  	"SSWSta": {
-//  		"SupportedStandards": "",
-//  		"Supports24GHz": true,
-//  		"Supports5GHz": true,
-//  		"Supports6GHz": false,
-//  		"ReconnectClass": "",
-//  		"FailedSteerCount": 0,
-//  		"SuccessSteerCount": 0,
-//  		"AvgSteeringTime": 0,
-//  		"SupportedUNIIBands": "U-NII-1,U-NII-2C",
-//  		"VendorSpecificElementOUIList": "00:00:00"
-//  	},
-//  	"UserAgents": [],
-//  	"WANAccess": { "BlockedReasons": "" },
-//  	"InterfaceType": "Wi-Fi"
-//  }
-
 type Child struct {
 	Key             string    `json:"Key"`
 	DiscoverySource string    `json:"DiscoverySource"`
@@ -816,7 +697,6 @@ func pinholeLsCmd() *cobra.Command {
 				return err
 			}
 
-			// {"result":{"status":{"webui_tailscale":{"Id":"webui_tailscale","Origin":"webui","Description":"tailscale","Status":"Enabled","SourceInterface":"data","Protocol":"17","IPVersion":6,"SourcePort":"","DestinationPort":"41642","SourcePrefix":"","DestinationIPAddress":"fdd2:4769:8b41::207","DestinationMACAddress":"","Enable":true}}}}
 			var data struct {
 				Result struct {
 					Status map[string]struct {
@@ -1726,6 +1606,7 @@ func apiCmd() *cobra.Command {
 				return fmt.Errorf("failed to create request: %w", err)
 			}
 
+			setHostHeader(req)
 			req.Header.Set("Authorization", "X-Sah "+contextID)
 			req.Header.Set("Content-Type", "application/x-sah-ws-4-call+json")
 			req.AddCookie(cookie)
@@ -2043,4 +1924,17 @@ func dnsLsCmd() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// Livebox wants 'Host: livebox' or 'Host: 192.168.1.1'. Otherwise, you will get
+// 'EOF' or 'Empty reply from server'.
+func setHostHeader(req *http.Request) {
+	if strings.HasPrefix(req.Host, "192.168.1.1") || strings.HasPrefix(req.Host, "livebox") {
+		return
+	}
+
+	// Color 'Warning' in yellow, rest of the text in default color.
+	_, _ = fmt.Fprintf(os.Stderr, "\033[33mWarning\033[0m: the hostname in the address '%s' doesn't match '192.168.1.1' or 'livebox'.\n"+
+		"You will see 'server closed connection' or 'Empty reply from server' errors because Livebox expects \n"+
+		"'Host: livebox' or 'Host: 192.168.1.1'.\n", req.Host)
 }
