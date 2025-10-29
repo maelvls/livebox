@@ -11,11 +11,11 @@ My internet service provider is Orange. When you sign up for a plan with them, t
 <table align="center" border="0">
   <tr>
     <td align="center">
-      <img alt="livebox-v4-fs8" src="https://github.com/user-attachments/assets/12b3b3eb-a9be-45b6-868e-a12b414a041c" width="500">
+      <img alt="livebox-v4-fs8" src="https://github.com/user-attachments/assets/bf8bf5e2-b7e4-4cd8-9097-15c6fc440eb3" width="500">
         Livebox 4
     </td>
     <td align="center">
-      <img alt="livebox-v5-fs8" src="https://github.com/user-attachments/assets/bf8bf5e2-b7e4-4cd8-9097-15c6fc440eb3" width="500">
+      <img alt="livebox-v5-fs8" src="https://github.com/user-attachments/assets/12b3b3eb-a9be-45b6-868e-a12b414a041c" width="500">
       Livebox 5
       </td>
     </tr>
