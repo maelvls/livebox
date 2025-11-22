@@ -780,6 +780,10 @@ func pinholeSetCmd() *cobra.Command {
 				protocol = "17" // UDP
 			}
 
+			if len(toMAC) > 0 {
+				toMAC = strings.ToLower(toMAC) // API handles mac address in lower case
+			}
+
 			params := map[string]any{
 				"id":                    name,
 				"origin":                "webui",
@@ -979,6 +983,10 @@ func portForwardSetCmd() *cobra.Command {
 			protocol := "6" // TCP
 			if useUDP {
 				protocol = "17" // UDP
+			}
+
+			if len(toMAC) > 0 {
+				toMAC = strings.ToLower(toMAC) // API handles mac address in lower case
 			}
 
 			params := map[string]any{
@@ -1209,7 +1217,7 @@ func staticLeaseRmCmd() *cobra.Command {
 				return err
 			}
 
-			mac := args[0]
+			mac := strings.ToLower(args[0]) // API handles mac address in lower case
 
 			leases, err := getStaticLeases(address, contextID, cookie)
 			if err != nil {
@@ -1229,15 +1237,14 @@ func staticLeaseRmCmd() *cobra.Command {
 			}
 
 			params := map[string]any{
-				"LeasePath": leasePath,
+				"MACAddress": mac,
 			}
 
-			response, err := executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "deleteStaticLease", params)
+			_, err = executeRequest(address, contextID, cookie, "DHCPv4.Server.Pool.default", "deleteStaticLease", params)
 			if err != nil {
 				return err
 			}
 
-			fmt.Println(response)
 			return nil
 		},
 	}
@@ -1265,7 +1272,7 @@ func staticLeaseSetCmd() *cobra.Command {
 				return err
 			}
 
-			mac := args[0]
+			mac := strings.ToLower(args[0]) // API handles mac address in lower case
 			ip := args[1]
 
 			leases, err := getStaticLeases(address, contextID, cookie)
@@ -1847,7 +1854,7 @@ func dnsSetCmd() *cobra.Command {
 				return err
 			}
 
-			mac := args[0]
+			mac := strings.ToLower(args[0]) // API handles mac address in lower case
 			name := args[1]
 
 			// Example:
